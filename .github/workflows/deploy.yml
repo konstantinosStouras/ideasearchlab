@@ -25,6 +25,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Add 404.html for React Router
+        run: cp dist/index.html dist/404.html
+
       - name: Checkout main site repo
         uses: actions/checkout@v4
         with:
@@ -32,7 +35,7 @@ jobs:
           token: ${{ secrets.SITE_DEPLOY_TOKEN }}
           path: site
 
-      - name: Copy build into lab/problem-solving
+      - name: Copy build into lab/ideasearchlab
         run: |
           mkdir -p site/lab/ideasearchlab
           cp -r dist/. site/lab/ideasearchlab/

@@ -1,0 +1,143 @@
+.page {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+.main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 32px;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.topLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.phaseTitle {
+  font-family: var(--font-display);
+  font-size: 28px;
+  color: var(--ink);
+}
+
+.ideaCount {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.doneBtn {
+  padding: 9px 20px;
+  font-size: 13px;
+}
+
+.waitingBanner {
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 13.5px;
+  color: #2e7d32;
+  flex-shrink: 0;
+}
+
+/* Idea list */
+.ideaList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.ideaCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  box-shadow: var(--shadow-sm);
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ideaNum {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1;
+  flex-shrink: 0;
+  width: 28px;
+}
+
+.ideaText {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* Add idea form */
+.addCard {
+  background: var(--white);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s;
+}
+
+.addCard:focus-within {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.ideaInput {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  color: var(--ink);
+  resize: none;
+  background: transparent;
+  line-height: 1.6;
+}
+
+.ideaInput::placeholder { color: var(--muted); }
+
+.maxReached {
+  text-align: center;
+  padding: 16px;
+  font-size: 13.5px;
+  color: var(--muted);
+  background: var(--paper);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}

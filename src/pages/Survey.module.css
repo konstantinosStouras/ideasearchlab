@@ -1,0 +1,148 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: var(--paper);
+}
+
+.card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 48px;
+  width: 100%;
+  max-width: 680px;
+  box-shadow: var(--shadow-md);
+}
+
+.top { margin-bottom: 36px; }
+.title { font-family: var(--font-display); font-size: 32px; margin-bottom: 8px; }
+.sub { font-size: 14px; color: var(--muted); }
+
+.form { display: flex; flex-direction: column; gap: 32px; }
+
+.question { display: flex; flex-direction: column; gap: 14px; }
+
+.qLabel {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.qNum {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--accent);
+  line-height: 1;
+  flex-shrink: 0;
+  width: 24px;
+}
+
+/* Likert */
+.likert { display: flex; flex-direction: column; gap: 6px; padding-left: 36px; }
+
+.likertOption { display: inline-flex; align-items: center; cursor: pointer; }
+.likertOption input { display: none; }
+
+.likertDot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.likertDot:hover { border-color: var(--accent); color: var(--accent); }
+
+.likertSelected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* Override parent flex for likert row */
+.likert {
+  display: flex;
+  flex-direction: column;
+}
+
+.likert > div:first-of-type,
+.question .likert {
+  flex-direction: column;
+}
+
+/* Horizontal layout for likert buttons */
+.likertButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.likertLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+/* Make the likert options horizontal */
+.likert {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px;
+}
+
+/* Inline the radio buttons */
+.question:has(.likert) .likert {
+  flex-direction: column;
+}
+
+.likertRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.freetext { margin-top: 4px; resize: vertical; }
+
+.submitBtn {
+  align-self: flex-start;
+  padding: 12px 36px;
+  font-size: 15px;
+}
+
+/* Done page */
+.donePage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  padding: 40px 20px;
+}
+
+.doneCard {
+  text-align: center;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.doneIcon { font-size: 48px; color: var(--accent); }
+.doneTitle { font-family: var(--font-display); font-size: 48px; }
+.doneSub { font-size: 15px; color: var(--muted); line-height: 1.7; }

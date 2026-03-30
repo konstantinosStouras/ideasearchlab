@@ -1,0 +1,126 @@
+.page { height: 100vh; display: flex; overflow: hidden; }
+
+.main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 28px;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.topLeft { display: flex; flex-direction: column; gap: 8px; }
+
+.phaseTitle { font-family: var(--font-display); font-size: 28px; }
+
+.memberPills { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.pill {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--paper-dark);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.pillMe {
+  background: rgba(200,86,42,0.08);
+  color: var(--accent);
+  border-color: rgba(200,86,42,0.2);
+}
+
+.topRight { display: flex; align-items: center; gap: 14px; }
+
+/* Two column layout */
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.columnTitle { font-family: var(--font-display); font-size: 18px; }
+.columnSub { font-size: 12px; color: var(--muted); margin-top: -6px; }
+
+.ideaList { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+
+.ideaCard {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-sm);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.groupCard { border-color: rgba(200,86,42,0.2); background: rgba(200,86,42,0.02); }
+
+.ideaHeader { display: flex; align-items: center; gap: 6px; }
+
+.ideaAuthor {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.youTag {
+  font-size: 10px;
+  background: rgba(200,86,42,0.1);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.ideaText { font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+
+.addCard {
+  background: var(--white);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+.addCard:focus-within { border-color: var(--accent); border-style: solid; }
+
+.ideaInput {
+  border: none; outline: none; background: transparent;
+  font-family: var(--font-body); font-size: 14px;
+  color: var(--ink); resize: none; width: 100%; line-height: 1.5;
+}
+.ideaInput::placeholder { color: var(--muted); }
+
+@media (max-width: 700px) {
+  .columns { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,149 @@
+.page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Left panel */
+.left {
+  flex: 1;
+  background: var(--ink);
+  color: var(--paper);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px;
+  position: relative;
+  overflow: hidden;
+}
+
+.leftInner {
+  position: relative;
+  z-index: 1;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 48px;
+}
+
+.headline {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1.1;
+  margin-bottom: 24px;
+  color: var(--paper);
+}
+
+.headline em {
+  font-style: italic;
+  color: var(--accent-light);
+}
+
+.sub {
+  font-size: 15px;
+  line-height: 1.7;
+  color: rgba(245, 242, 235, 0.6);
+  max-width: 340px;
+}
+
+.decoration {
+  position: absolute;
+  right: -80px;
+  bottom: -80px;
+  width: 400px;
+  height: 400px;
+  color: var(--paper);
+  pointer-events: none;
+}
+
+/* Right panel */
+.right {
+  width: 440px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: var(--paper);
+}
+
+.formCard {
+  width: 100%;
+  max-width: 360px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 32px;
+  border-bottom: 1.5px solid var(--border);
+}
+
+.tab,
+.tabActive {
+  background: none;
+  border: none;
+  padding: 10px 0;
+  margin-right: 28px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.tabActive {
+  color: var(--ink);
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: -1.5px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* Form */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.submitBtn {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+@media (max-width: 700px) {
+  .page { flex-direction: column; }
+  .left { padding: 40px 28px; flex: none; height: 220px; }
+  .headline { font-size: 32px; }
+  .right { width: 100%; flex: 1; padding: 28px; }
+  .decoration { display: none; }
+}

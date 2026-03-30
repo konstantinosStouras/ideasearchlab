@@ -1,0 +1,85 @@
+.container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.leftPanel {
+  width: var(--left-pct, 100%);
+  height: 100%;
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0s; /* no transition during drag */
+}
+
+.divider {
+  width: 6px;
+  flex-shrink: 0;
+  background: var(--border);
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  z-index: 10;
+}
+
+.divider:hover,
+.divider:active {
+  background: var(--accent);
+}
+
+.dividerHandle {
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.divider:hover .dividerHandle {
+  background: var(--white);
+  opacity: 0.9;
+}
+
+.rightPanel {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Mobile: stack vertically */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+
+  .leftPanel {
+    width: 100% !important;
+    height: var(--left-pct, 60%);
+  }
+
+  .divider {
+    width: 100%;
+    height: 6px;
+    cursor: row-resize;
+    flex-direction: row;
+  }
+
+  .dividerHandle {
+    width: 40px;
+    height: 2px;
+  }
+
+  .rightPanel {
+    flex: 1;
+    height: auto;
+    width: 100%;
+  }
+}

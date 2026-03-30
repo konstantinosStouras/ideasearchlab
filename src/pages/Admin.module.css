@@ -1,0 +1,252 @@
+.page {
+  min-height: 100vh;
+  background: var(--paper);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 40px;
+  border-bottom: 1px solid var(--border);
+  background: var(--white);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+
+.userName {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageTitle {
+  font-family: var(--font-display);
+  font-size: 32px;
+}
+
+.formCard {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-size: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.subTitle {
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.createBtn {
+  align-self: flex-start;
+  padding: 12px 32px;
+  font-size: 15px;
+}
+
+/* Toggle */
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--paper);
+  border-radius: var(--radius);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleDisabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.toggleLabel {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toggleTrack {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.2s;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggleOn {
+  background: var(--accent);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--white);
+  transition: left 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.toggleOn .toggleThumb {
+  left: 21px;
+}
+
+/* Sessions list */
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sessionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+
+.sessionRow:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.sessionLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sessionCode {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.05em;
+}
+
+.statusBadge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.status_waiting { background: #e8f5e9; color: #2e7d32; }
+.status_individual { background: #e3f2fd; color: #1565c0; }
+.status_group { background: #fce4ec; color: #c62828; }
+.status_voting { background: #fff8e1; color: #f57f17; }
+.status_survey { background: #f3e5f5; color: #6a1b9a; }
+.status_done { background: var(--paper); color: var(--muted); }
+
+.sessionRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sessionMeta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sessionArrow {
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  background: var(--white);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+@media (max-width: 600px) {
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .header { padding: 16px 20px; }
+  .main { padding: 24px 16px; }
+}

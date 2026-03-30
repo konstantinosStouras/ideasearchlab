@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function isSessionInstructor(sessionId) {
+      return get(/databases/$(database)/documents/sessions/$(sessionId)).data.instructorId == request.auth.uid;
+    }
+
+    function isSessionParticipant(sessionId) {
+      return exists(/databases/$(database)/documents/sessions/$(sessionId)/participants/$(request.auth.uid));
+    }
+
+    function isSessionMember(sessionId) {
+      return isSessionInstructor(sessionId) || isSessionParticipant(sessionId);
+    }
+
+    // ── Global Settings ───────────────────────────────────────────────────
+    // Only Cloud Functions (admin SDK) write here.
+    // Instructors can read to display current config in the UI.
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false; // written only via saveAISettings Cloud Function
+    }
+
+
+
+    match /sessions/{sessionId} {
+      // Anyone signed in can read a session (needed to join by code)
+      allow read: if isSignedIn();
+
+      // Only authenticated users can create sessions (instructor)
+      allow create: if isSignedIn()
+        && request.resource.data.instructorId == request.auth.uid;
+
+      // Only the instructor can update the session document
+      allow update: if isSessionInstructor(sessionId);
+
+      // No one can delete sessions from the client
+      allow delete: if false;
+
+      // ── Participants ──────────────────────────────────────────────────────
+
+      match /participants/{participantId} {
+        // Instructor sees all; participant sees only their own doc
+        allow read: if isSessionInstructor(sessionId)
+          || isOwner(participantId);
+
+        // Participant can only write their own doc
+        allow create: if isSignedIn() && isOwner(participantId);
+
+        // Participant can update their own doc; instructor can update any
+        allow update: if isSessionInstructor(sessionId)
+          || isOwner(participantId);
+
+        allow delete: if false;
+      }
+
+      // ── Groups ────────────────────────────────────────────────────────────
+
+      match /groups/{groupId} {
+        // Participants in the session can read groups
+        allow read: if isSessionMember(sessionId);
+
+        // Only Cloud Functions write groups (via admin SDK, bypasses rules)
+        allow write: if false;
+      }
+
+      // ── Ideas ─────────────────────────────────────────────────────────────
+
+      match /ideas/{ideaId} {
+        // All session members can read ideas
+        allow read: if isSessionMember(sessionId);
+
+        // Participants can create ideas (their own)
+        allow create: if isSessionParticipant(sessionId)
+          && request.resource.data.authorId == request.auth.uid;
+
+        // No client-side updates to ideas (votes handled by Cloud Function)
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // ── AI Messages ───────────────────────────────────────────────────────
+
+      match /aiMessages/{messageId} {
+        // Participants can read messages in their own scope
+        allow read: if isSessionMember(sessionId);
+
+        // Participants can write their own user messages
+        allow create: if isSessionParticipant(sessionId)
+          && request.resource.data.role == 'user'
+          && request.resource.data.authorId == request.auth.uid;
+
+        // AI responses written by Cloud Function only
+        allow update, delete: if false;
+      }
+    }
+  }
+}

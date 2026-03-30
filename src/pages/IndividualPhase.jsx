@@ -1,0 +1,164 @@
+import { useState, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
+import {
+  collection, addDoc, onSnapshot, query, where,
+  orderBy, serverTimestamp, doc, updateDoc
+} from 'firebase/firestore'
+import { db } from '../firebase'
+import { useAuth } from '../context/AuthContext'
+import { useSession } from '../context/SessionContext'
+import SplitLayout from '../components/SplitLayout'
+import AIChat from '../components/AIChat'
+import PhaseTimer from '../components/PhaseTimer'
+import styles from './IndividualPhase.module.css'
+
+export default function IndividualPhase() {
+  const { sessionId } = useParams()
+  const { user } = useAuth()
+  const { session } = useSession()
+  const [ideas, setIdeas] = useState([])
+  const [newIdea, setNewIdea] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const pc = session?.phaseConfig || {}
+  const maxIdeas = pc.maxIdeasIndividual || 5
+  const aiEnabled = session?.aiConfig?.individualAI
+
+  // Listen to this user's ideas
+  useEffect(() => {
+    if (!sessionId || !user) return
+    const q = query(
+      collection(db, 'sessions', sessionId, 'ideas'),
+      where('authorId', '==', user.uid),
+      where('phase', '==', 'individual'),
+      orderBy('createdAt', 'asc')
+    )
+    const unsub = onSnapshot(q, snap => {
+      setIdeas(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+    return unsub
+  }, [sessionId, user])
+
+  async function submitIdea(e) {
+    e.preventDefault()
+    const text = newIdea.trim()
+    if (!text || submitting || ideas.length >= maxIdeas) return
+
+    setSubmitting(true)
+    try {
+      await addDoc(collection(db, 'sessions', sessionId, 'ideas'), {
+        text,
+        authorId: user.uid,
+        authorName: user.displayName || user.email,
+        phase: 'individual',
+        groupId: null,
+        votes: 0,
+        createdAt: serverTimestamp(),
+      })
+      setNewIdea('')
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function markDone() {
+    if (done) return
+    setDone(true)
+    await updateDoc(
+      doc(db, 'sessions', sessionId, 'participants', user.uid),
+      { individualComplete: true, status: 'waiting_for_group' }
+    )
+  }
+
+  const atMax = ideas.length >= maxIdeas
+  const canFinish = ideas.length > 0 && !done
+
+  const mainPanel = (
+    <div className={styles.main}>
+      <div className={styles.topBar}>
+        <div className={styles.topLeft}>
+          <h1 className={styles.phaseTitle}>Individual Phase</h1>
+          <span className={styles.ideaCount}>{ideas.length} / {maxIdeas} ideas</span>
+        </div>
+        <div className={styles.topRight}>
+          <PhaseTimer
+            phaseStartedAt={session?.phaseStartedAt}
+            durationSeconds={pc.individualPhaseDuration}
+            onExpire={canFinish ? markDone : undefined}
+          />
+          <button
+            className={`btn-primary ${styles.doneBtn}`}
+            onClick={markDone}
+            disabled={!canFinish}
+          >
+            {done ? 'Waiting for group...' : 'Finish & Submit'}
+          </button>
+        </div>
+      </div>
+
+      {done && (
+        <div className={styles.waitingBanner}>
+          Your ideas are submitted. Waiting for 2 more participants to finish before your group forms.
+        </div>
+      )}
+
+      {/* Idea list */}
+      <div className={styles.ideaList}>
+        {ideas.map((idea, i) => (
+          <div key={idea.id} className={styles.ideaCard}>
+            <span className={styles.ideaNum}>{i + 1}</span>
+            <p className={styles.ideaText}>{idea.text}</p>
+          </div>
+        ))}
+
+        {!done && !atMax && (
+          <form onSubmit={submitIdea} className={styles.addCard}>
+            <textarea
+              className={styles.ideaInput}
+              value={newIdea}
+              onChange={e => setNewIdea(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitIdea(e) }}
+              placeholder={`Idea ${ideas.length + 1} — what's your idea?`}
+              rows={3}
+              disabled={submitting || done}
+              autoFocus
+            />
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={submitting || !newIdea.trim() || done}
+            >
+              {submitting ? 'Adding...' : 'Add Idea'}
+            </button>
+          </form>
+        )}
+
+        {atMax && !done && (
+          <div className={styles.maxReached}>
+            Maximum ideas reached. Review your ideas above and click Finish when ready.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={styles.page}>
+      <SplitLayout
+        leftPanel={mainPanel}
+        rightPanel={aiEnabled ? (
+          <AIChat
+            sessionId={sessionId}
+            scope="individual"
+            scopeId={user?.uid}
+            aiConfig={session?.aiConfig}
+          />
+        ) : null}
+        defaultSplit={58}
+      />
+    </div>
+  )
+}

@@ -5,6 +5,8 @@ import { RequireAuth, RequireGuest, RequireInstructor } from './components/Prote
 
 import Login from './pages/Login'
 import JoinSession from './pages/JoinSession'
+import Welcome from './pages/Welcome'
+import Registration from './pages/Registration'
 import SessionLobby from './pages/SessionLobby'
 import IndividualPhase from './pages/IndividualPhase'
 import GroupPhase from './pages/GroupPhase'
@@ -29,6 +31,22 @@ export default function App() {
 
         {/* Participant flow */}
         <Route path="/join" element={<RequireAuth><JoinSession /></RequireAuth>} />
+
+        <Route path="/session/:sessionId/welcome" element={
+          <RequireAuth>
+            <SessionWrapper>
+              <Welcome />
+            </SessionWrapper>
+          </RequireAuth>
+        } />
+
+        <Route path="/session/:sessionId/register" element={
+          <RequireAuth>
+            <SessionWrapper>
+              <Registration />
+            </SessionWrapper>
+          </RequireAuth>
+        } />
 
         <Route path="/session/:sessionId" element={
           <RequireAuth>

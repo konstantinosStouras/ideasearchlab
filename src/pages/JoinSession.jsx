@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
-import { getFunctions, httpsCallable } from 'firebase/functions'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import styles from './JoinSession.module.css'
@@ -22,26 +21,36 @@ export default function JoinSession() {
     try {
       const trimmedCode = code.trim().toUpperCase()
 
-      // Call the joinSession Cloud Function — it validates the code,
-      // registers the participant, and calls tryFormGroup to form a group
-      // immediately if enough participants are waiting.
-      const functions = getFunctions(undefined, 'europe-west1')
-      const joinSession = httpsCallable(functions, 'joinSession')
-      const result = await joinSession({ code: trimmedCode })
+      // Validate the session code via a client-side Firestore query
+      const sessionsQuery = query(
+        collection(db, 'sessions'),
+        where('code', '==', trimmedCode),
+        where('status', '!=', 'done')
+      )
+      const snap = await getDocs(sessionsQuery)
 
-      const { sessionId } = result.data
+      if (snap.empty) {
+        setError('Session not found. Check the code and try again.')
+        setLoading(false)
+        return
+      }
 
-      // Navigate to the session lobby
-      navigate(`/session/${sessionId}`)
+      const sessionId = snap.docs[0].id
+
+      // Check if this participant already registered (rejoining)
+      const participantRef = doc(db, 'sessions', sessionId, 'participants', user.uid)
+      const participantSnap = await getDoc(participantRef)
+
+      if (participantSnap.exists()) {
+        // Already registered, skip welcome/registration and go to lobby
+        navigate(`/session/${sessionId}`)
+      } else {
+        // New participant, show welcome page first
+        navigate(`/session/${sessionId}/welcome`)
+      }
     } catch (err) {
       console.error(err)
-      if (err.code === 'functions/not-found') {
-        setError('Session not found. Check the code and try again.')
-      } else if (err.code === 'functions/failed-precondition') {
-        setError('This session has already ended.')
-      } else {
-        setError('Something went wrong. Please try again.')
-      }
+      setError('Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -59,7 +68,7 @@ export default function JoinSession() {
 
       <main className={styles.main}>
         <div className={styles.card}>
-          <div className={styles.icon} aria-hidden="true">◈</div>
+          <div className={styles.icon} aria-hidden="true">&#x25C8;</div>
           <h1 className={styles.title}>Join a Session</h1>
           <p className={styles.desc}>
             Enter the session code provided by your instructor to begin.

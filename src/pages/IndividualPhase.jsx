@@ -171,18 +171,26 @@ export default function IndividualPhase() {
     if (done) return
     setDone(true)
     try {
-      const batch = writeBatch(db)
-      ideas.forEach(idea => {
-        const ref = doc(db, 'sessions', sessionId, 'ideas', idea.id)
-        batch.update(ref, { selected: selectedIds.has(idea.id) })
-      })
-      batch.update(
+      // 1. Mark participant as done (critical, should always succeed)
+      await updateDoc(
         doc(db, 'sessions', sessionId, 'participants', user.uid),
         { individualComplete: true, status: 'waiting_for_group' }
       )
-      await batch.commit()
+
+      // 2. Try to mark selected ideas in Firestore (non-critical)
+      //    Requires update rules on ideas subcollection.
+      try {
+        const batch = writeBatch(db)
+        ideas.forEach(idea => {
+          const ref = doc(db, 'sessions', sessionId, 'ideas', idea.id)
+          batch.update(ref, { selected: selectedIds.has(idea.id) })
+        })
+        await batch.commit()
+      } catch (ideaErr) {
+        console.warn('Could not update idea selection flags:', ideaErr.message)
+      }
     } catch (err) {
-      console.error(err)
+      console.error('Failed to submit:', err)
       setDone(false)
     }
   }

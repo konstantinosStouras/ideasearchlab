@@ -126,7 +126,10 @@ export default function IndividualPhase() {
 
       {done && (() => {
         const groupSize = session?.phaseConfig?.groupSize ?? 3
-        const doneCount = groupMembers.filter(m => m.individualComplete).length
+        // Count from Firestore, but always include self even if listener hasn't updated yet
+        const firestoreCount = groupMembers.filter(m => m.individualComplete).length
+        const selfCounted = groupMembers.some(m => m.id === user?.uid && m.individualComplete)
+        const doneCount = selfCounted ? firestoreCount : firestoreCount + 1
         return (
           <div className={styles.waitingBanner}>
             {groupSize === 1

@@ -176,6 +176,7 @@ export default function GroupPhase() {
               <div key={idea.id} className={`${styles.ideaCard} ${styles.groupCard}`}>
                 <div className={styles.ideaHeader}>
                   <span className={styles.ideaAuthor}>{memberLabels[idea.authorId] || '?'}</span>
+                  {idea.authorId === user.uid && <span className={styles.youTag}>you</span>}
                 </div>
                 <p className={styles.ideaText}>{idea.text}</p>
               </div>

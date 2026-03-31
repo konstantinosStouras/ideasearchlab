@@ -62,7 +62,7 @@
 .summaryLabel { color: var(--muted); }
 .summaryValue { font-weight: 500; text-align: right; }
 
-.formActions { display: flex; gap: 10px; margin-bottom: 4px; }
+.formActions { display: flex; gap: 10px; margin-bottom: 20px; }
 
 .createdCodeBox {
   margin: 16px 0;

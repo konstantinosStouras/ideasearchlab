@@ -59,6 +59,24 @@ participants/{uid}: {
 - Logging in as admin@admin.com redirects directly to /admin.
 - Session delete is allowed only for admin@admin.com (Firestore rule: isAdmin()).
 - Admin advance button is labelled "Force advance" and is a manual override; most transitions happen automatically.
+- Language throughout uses "participants" not "players".
+**Admin UI (Admin.jsx + Admin.module.css):**
+- Two-column layout: left = Create/Edit session form, right = Active/Completed sessions list
+- Each form section has a small 11px hint text (sectionHint class) below the section heading
+- cardSubtitle class used under card titles for descriptive text
+- After creating a session, a vivid code box appears (createdCodeBox) below the Create button and above Setup Summary, showing the session code with a dashed accent border. No auto-navigation -- admin opens the session from the right panel.
+- Code box hint text: "Share this code before your session begins. Participants join at: stouras.com/lab/ideasearchlab" (with clickable link)
+- joinHint class shows at the bottom of the Active Sessions panel
+- Setup Summary sits below the code box at the bottom of the left card
+- CSS module filenames must be Admin.module.css and AdminSession.module.css (dot not underscore) -- GitHub Pages build is case-sensitive
+**AdminSession.jsx + AdminSession.module.css (host control room):**
+- Header: back button, wordmark, slash, session code, status badge
+- Phase timeline rendered inside a timelineCard div (not raw text)
+- Two-column grid: Participants panel (with breakdown chips and list) + Session Config panel
+- ConfigRow uses CSS module classes (configRow, configLabel, configValue) not inline styles
+- Advance bar at bottom: current phase, arrow, next phase, auto-note, Force advance button
+- Participant display falls back to anonymousLabel or truncated ID if name is missing
+- Phase order value humanised (individual_first -> individual first)
 **Firestore security rules highlights:**
 - Sessions: read by any signed-in user, create by signed-in user, update by session instructor, delete by admin@admin.com only
 - Participants: read by instructor OR any session participant OR owner (needed for pre-join getDoc check)
@@ -85,7 +103,9 @@ Note: Firebase detects unchanged functions and skips them. If a redeploy is skip
 - Firestore transactions (db.runTransaction) do NOT support query reads (tx.get with .where()). Only document reads (tx.get(docRef)) work inside transactions. Use batch writes instead when queries are needed.
 - JoinSession and GroupPhase both had this bug fixed by replacing transactions with query-then-batch pattern.
 - Every phase page (SessionLobby, IndividualPhase, GroupPhase, VotingPhase, Survey) has a real-time onSnapshot listener on the participant's own document that navigates automatically when status changes. This is the core routing mechanism.
-- Downloaded file changes must be manually copied into the local repo before committing.
+- Downloaded file changes must be manually copied into the local repo before committing -- Claude cannot push to GitHub directly.
+- CSS module filenames are case-sensitive on the GitHub Pages build server. Always use dots not underscores (Admin.module.css not Admin_module.css).
+- Browser cache can mask deployed changes. Use Ctrl+Shift+R or incognito to verify.
 - Git tags used for lightweight version snapshots; CLAUDE.md at repo root for project context onboarding.
-**Current status:** App is live. Full participant flow is functional end to end. Group formation at join time is implemented but still being tested. Anonymous labels in group phase are implemented. Admin-only access enforced.
+**Current status:** App is live. Admin panel UI improvements complete (hint text, session code display, host control room layout). Full participant flow is functional end to end. Group formation at join time is implemented but still being tested. Anonymous labels in group phase are implemented. Admin-only access enforced.
 **Next steps when resuming:** continue testing the full participant flow with the new group-on-join logic, verify anonymous labels display correctly in group phase, test voting and survey completion.

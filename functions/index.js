@@ -16,3 +16,4 @@ exports.handleStragglers = grouping.handleStragglers
 exports.sendAIMessage = ai.sendAIMessage
 exports.saveAISettings = ai.saveAISettings
 exports.submitVote = voting.submitVote
+exports.onParticipantUpdated = session.onParticipantUpdated

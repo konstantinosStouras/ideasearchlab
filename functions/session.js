@@ -1,13 +1,68 @@
 const functions = require('firebase-functions').region('europe-west1')
 const admin = require('firebase-admin')
 
-const db = admin.firestore() // v2
+const db = admin.firestore()
+
+/**
+ * tryFormGroup
+ * Called after a new participant joins. If enough participants are waiting,
+ * immediately forms a group and starts their first phase.
+ */
+async function tryFormGroup(sessionId, session) {
+  const sessionRef = db.collection('sessions').doc(sessionId)
+  const groupSize = session.phaseConfig?.groupSize ?? 3
+  const individualActive = session.phaseConfig?.individualPhaseActive ?? true
+  const phaseOrder = session.phaseConfig?.phaseOrder ?? 'individual_first'
+  const firstPhase = (individualActive && phaseOrder === 'individual_first') ? 'individual' : 'group'
+
+  const waitingSnap = await sessionRef.collection('participants')
+    .where('status', '==', 'waiting')
+    .get()
+
+  const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+  if (waiting.length < groupSize) return // not enough yet
+
+  // Take exactly groupSize participants
+  const groupMembers = waiting.slice(0, groupSize)
+  const groupRef = sessionRef.collection('groups').doc()
+  const memberLabels = {}
+  groupMembers.forEach((p, i) => { memberLabels[p.id] = `p${i + 1}` })
+
+  const batch = db.batch()
+
+  batch.set(groupRef, {
+    members: groupMembers.map(p => p.id),
+    memberLabels,
+    status: 'active',
+    finalIdeas: [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+
+  groupMembers.forEach(p => {
+    batch.update(sessionRef.collection('participants').doc(p.id), {
+      groupId: groupRef.id,
+      status: firstPhase,
+      anonymousLabel: memberLabels[p.id],
+    })
+  })
+
+  // Advance session status from 'waiting' to first phase if not already there
+  if (session.status === 'waiting') {
+    batch.update(sessionRef, {
+      status: firstPhase,
+      phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  }
+
+  await batch.commit()
+}
 
 /**
  * joinSession
  * Validates a session code and registers the participant.
- * Called from the JoinSession page (in addition to the direct Firestore write).
- * Acts as a server-side validation layer.
+ * Called from the JoinSession page.
+ * After registering, attempts to form a group immediately if enough are waiting.
  */
 exports.joinSession = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
@@ -50,6 +105,9 @@ exports.joinSession = functions.https.onCall(async (data, context) => {
       individualComplete: false,
       groupId: null,
     })
+
+    // Try to form a group immediately if enough participants are now waiting
+    await tryFormGroup(sessionId, session)
   }
 
   return { sessionId, status: session.status }
@@ -207,3 +265,39 @@ function getPhaseSequence(phaseConfig = {}) {
   sequence.push('survey', 'done')
   return sequence
 }
+
+
+/**
+ * onParticipantUpdated
+ * Firestore trigger: when a participant's status changes to 'done',
+ * check if all participants in the session are done and advance session to 'done'.
+ */
+exports.onParticipantUpdated = functions.firestore
+  .document('sessions/{sessionId}/participants/{participantId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data()
+    const after = change.after.data()
+
+    // Only act when status just became 'done'
+    if (before.status === after.status || after.status !== 'done') return null
+
+    const { sessionId } = context.params
+    const sessionRef = db.collection('sessions').doc(sessionId)
+    const sessionSnap = await sessionRef.get()
+    if (!sessionSnap.exists) return null
+
+    // Only advance if session is currently in 'survey'
+    if (sessionSnap.data().status !== 'survey') return null
+
+    const participantsSnap = await sessionRef.collection('participants').get()
+    const allDone = participantsSnap.docs.every(d => d.data().status === 'done')
+
+    if (allDone) {
+      await sessionRef.update({
+        status: 'done',
+        phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+    }
+
+    return null
+  })

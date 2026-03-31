@@ -27,66 +27,62 @@ exports.autoGroupParticipants = functions.firestore
     const { sessionId } = context.params
     const sessionRef = db.collection('sessions').doc(sessionId)
 
-    await db.runTransaction(async (tx) => {
-      const sessionSnap = await tx.get(sessionRef)
-      if (!sessionSnap.exists) return
+    // Query group members OUTSIDE transaction (transactions don't support queries)
+    const sessionSnap = await sessionRef.get()
+    if (!sessionSnap.exists) return
 
-      const session = sessionSnap.data()
+    const session = sessionSnap.data()
 
-      // Only run during individual_first flow
-      if (
-        !session.phaseConfig?.individualPhaseActive ||
-        !session.phaseConfig?.groupPhaseActive ||
-        session.phaseConfig?.phaseOrder !== 'individual_first'
-      ) return
+    // Only run during individual_first flow
+    if (
+      !session.phaseConfig?.individualPhaseActive ||
+      !session.phaseConfig?.groupPhaseActive ||
+      session.phaseConfig?.phaseOrder !== 'individual_first'
+    ) return
 
-      // Get all members of this participant's group
-      const groupMembersSnap = await tx.get(
-        sessionRef.collection('participants').where('groupId', '==', groupId)
-      )
+    // Get all members of this participant's group
+    const groupMembersSnap = await sessionRef.collection('participants')
+      .where('groupId', '==', groupId)
+      .get()
 
-      const members = groupMembersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const members = groupMembersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-      // Check if ALL members of this group have completed individual phase
-      // (use the updated data for the current participant)
-      const allDone = members.every(m =>
-        m.id === after.uid ? true : m.individualComplete
-      )
-      // More precisely: check by id matching change.after.ref
-      const allGroupDone = members.every(m => {
-        if (m.id === change.after.id) return true // this is the one who just flipped
-        return m.individualComplete
-      })
-
-      if (!allGroupDone) {
-        // Not all group members done yet - update status to waiting_for_group
-        tx.update(change.after.ref, { status: 'waiting_for_group' })
-        return
-      }
-
-      // All group members done - move them all to group phase
-      members.forEach(m => {
-        tx.update(sessionRef.collection('participants').doc(m.id), {
-          status: 'group',
-        })
-      })
-
-      // Check if ALL participants in the session are now in group/survey/done
-      const allParticipantsSnap = await tx.get(sessionRef.collection('participants'))
-      const allSessionDone = allParticipantsSnap.docs.every(d => {
-        const p = d.data()
-        // Count the current participant as 'group' since we just set it
-        if (d.id === change.after.id) return true
-        return ['group', 'voting', 'survey', 'done'].includes(p.status) || p.groupId
-      })
-
-      if (allSessionDone && session.status === 'individual') {
-        tx.update(sessionRef, {
-          status: 'group',
-          phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-      }
+    // Check if ALL members of this group have completed individual phase
+    const allGroupDone = members.every(m => {
+      if (m.id === change.after.id) return true // this one just flipped
+      return m.individualComplete
     })
+
+    if (!allGroupDone) {
+      // Not all group members done yet - mark as waiting_for_group
+      await change.after.ref.update({ status: 'waiting_for_group' })
+      return
+    }
+
+    // All group members done - move them all to group phase using a batch
+    const batch = db.batch()
+    members.forEach(m => {
+      batch.update(sessionRef.collection('participants').doc(m.id), {
+        status: 'group',
+      })
+    })
+
+    // Check if ALL participants in the session are now resolved
+    const allParticipantsSnap = await sessionRef.collection('participants').get()
+    const allSessionDone = allParticipantsSnap.docs.every(d => {
+      if (d.id === change.after.id) return true // just moved to group
+      const p = d.data()
+      return ['group', 'voting', 'survey', 'done'].includes(p.status)
+    })
+
+    if (allSessionDone && session.status === 'individual') {
+      batch.update(sessionRef, {
+        status: 'group',
+        phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+    }
+
+    await batch.commit()
   })
 
 

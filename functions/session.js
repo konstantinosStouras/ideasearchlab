@@ -86,53 +86,55 @@ async function tryFormGroup(sessionId, session) {
 
   const sessionRef = db.collection('sessions').doc(sessionId)
 
-  await db.runTransaction(async (tx) => {
-    // Get all unassigned waiting participants
-    const waitingSnap = await tx.get(
-      sessionRef.collection('participants').where('status', '==', 'waiting')
-    )
+  // Query waiting participants OUTSIDE transaction (transactions don't support queries)
+  const waitingSnap = await sessionRef.collection('participants')
+    .where('status', '==', 'waiting')
+    .get()
 
-    const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    if (waiting.length < groupSize) return // not enough yet
+  if (waiting.length < groupSize) return // not enough yet
 
-    // Take the first groupSize participants and shuffle for anonymous ordering
-    const toAssign = waiting.slice(0, groupSize)
-    const shuffled = [...toAssign].sort(() => Math.random() - 0.5)
+  // Take the first groupSize participants and shuffle for anonymous ordering
+  const toAssign = waiting.slice(0, groupSize)
+  const shuffled = [...toAssign].sort(() => Math.random() - 0.5)
 
-    // Create group document with anonymised member labels
-    const groupRef = sessionRef.collection('groups').doc()
-    const memberLabels = {}
-    shuffled.forEach((p, i) => {
-      memberLabels[p.id] = `p${i + 1}`
-    })
-
-    tx.set(groupRef, {
-      members: shuffled.map(p => p.id),
-      memberLabels,
-      status: 'active',
-      finalIdeas: [],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
-
-    // Move participants into their first phase
-    shuffled.forEach(p => {
-      tx.update(sessionRef.collection('participants').doc(p.id), {
-        groupId: groupRef.id,
-        status: firstPhase,
-        anonymousLabel: memberLabels[p.id],
-      })
-    })
-
-    // If session is still waiting, advance it to the first phase
-    const sessionSnap = await tx.get(sessionRef)
-    if (sessionSnap.exists && sessionSnap.data().status === 'waiting') {
-      tx.update(sessionRef, {
-        status: firstPhase,
-        phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-      })
-    }
+  // Create group document with anonymised member labels
+  const groupRef = sessionRef.collection('groups').doc()
+  const memberLabels = {}
+  shuffled.forEach((p, i) => {
+    memberLabels[p.id] = `p${i + 1}`
   })
+
+  const batch = db.batch()
+
+  batch.set(groupRef, {
+    members: shuffled.map(p => p.id),
+    memberLabels,
+    status: 'active',
+    finalIdeas: [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+
+  // Move participants into their first phase
+  shuffled.forEach(p => {
+    batch.update(sessionRef.collection('participants').doc(p.id), {
+      groupId: groupRef.id,
+      status: firstPhase,
+      anonymousLabel: memberLabels[p.id],
+    })
+  })
+
+  // If session is still waiting, advance it to the first phase
+  const sessionSnap = await sessionRef.get()
+  if (sessionSnap.exists && sessionSnap.data().status === 'waiting') {
+    batch.update(sessionRef, {
+      status: firstPhase,
+      phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  }
+
+  await batch.commit()
 }
 
 

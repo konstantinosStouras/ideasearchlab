@@ -7,6 +7,9 @@ const db = admin.firestore()
  * tryFormGroup
  * Called after a new participant joins. If enough participants are waiting,
  * immediately forms a group and starts their first phase.
+ *
+ * joiningUid is passed explicitly to guard against the Firestore read-after-write
+ * race condition: the query may not yet include the participant who just joined.
  */
 async function tryFormGroup(sessionId, session, joiningUid = null) {
   const sessionRef = db.collection('sessions').doc(sessionId)
@@ -21,15 +24,15 @@ async function tryFormGroup(sessionId, session, joiningUid = null) {
 
   const waitingFromDB = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-  // Include the joining participant even if Firestore hasn't reflected them yet
+  // Inject the joining participant if Firestore hasn't reflected their write yet
   const alreadyIncluded = waitingFromDB.some(p => p.id === joiningUid)
   const waiting = (joiningUid && !alreadyIncluded)
     ? [...waitingFromDB, { id: joiningUid, status: 'waiting' }]
     : waitingFromDB
 
-  if (waiting.length < groupSize) return // not enough yet
+  if (waiting.length < groupSize) return // not enough participants yet
 
-  // Take exactly groupSize participants
+  // Take exactly groupSize participants and assign anonymous labels
   const groupMembers = waiting.slice(0, groupSize)
   const groupRef = sessionRef.collection('groups').doc()
   const memberLabels = {}
@@ -53,8 +56,11 @@ async function tryFormGroup(sessionId, session, joiningUid = null) {
     })
   })
 
-  // Advance session status from 'waiting' to first phase if not already there
-  if (session.status === 'waiting') {
+  // Re-read the session status from Firestore to avoid acting on a stale snapshot.
+  // The `session` object passed in was captured at join time and may already be outdated
+  // if a concurrent join already advanced the session.
+  const freshSessionSnap = await sessionRef.get()
+  if (freshSessionSnap.exists && freshSessionSnap.data().status === 'waiting') {
     batch.update(sessionRef, {
       status: firstPhase,
       phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -165,14 +171,28 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
     let newStatus = p.status
 
     if (nextPhase === 'individual') {
+      // Move any waiting participants into the individual phase
       if (p.status === 'waiting') newStatus = 'individual'
     }
 
-    if (nextPhase === 'group' && session.phaseConfig?.phaseOrder === 'group_first') {
-      if (p.status === 'waiting') newStatus = 'group'
+    if (nextPhase === 'group') {
+      if (session.phaseConfig?.phaseOrder === 'group_first') {
+        // group_first: move waiting participants directly into group
+        if (p.status === 'waiting') newStatus = 'group'
+      } else {
+        // individual_first: force-advance anyone who hasn't reached group yet
+        // This covers: still waiting, still in individual, or stuck in transition
+        if (['waiting', 'individual'].includes(p.status)) newStatus = 'group'
+      }
+    }
+
+    if (nextPhase === 'voting') {
+      // Move all participants currently in group phase into voting
+      if (p.status === 'group') newStatus = 'voting'
     }
 
     if (nextPhase === 'survey') {
+      // Move everyone who hasn't completed the survey yet
       if (!['survey', 'done'].includes(p.status)) newStatus = 'survey'
     }
 

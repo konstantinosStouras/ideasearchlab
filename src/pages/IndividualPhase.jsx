@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
   orderBy, serverTimestamp, doc, updateDoc
@@ -14,6 +14,7 @@ import styles from './IndividualPhase.module.css'
 
 export default function IndividualPhase() {
   const { sessionId } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { session } = useSession()
   const [ideas, setIdeas] = useState([])
@@ -42,15 +43,24 @@ export default function IndividualPhase() {
     return unsub
   }, [sessionId, user])
 
-  // Get groupId from own participant doc
+  // Get groupId from own participant doc + navigate on status change
   useEffect(() => {
     if (!sessionId || !user) return
     const unsub = onSnapshot(
       doc(db, 'sessions', sessionId, 'participants', user.uid),
-      snap => { if (snap.exists()) setGroupId(snap.data().groupId) }
+      snap => {
+        if (!snap.exists()) return
+        const data = snap.data()
+        setGroupId(data.groupId)
+        const status = data.status
+        if (status === 'group') navigate(`/session/${sessionId}/group`)
+        else if (status === 'voting') navigate(`/session/${sessionId}/voting`)
+        else if (status === 'survey') navigate(`/session/${sessionId}/survey`)
+        else if (status === 'done') navigate(`/session/${sessionId}/done`)
+      }
     )
     return unsub
-  }, [sessionId, user])
+  }, [sessionId, user, navigate])
 
   // Listen to group members to show completion count
   useEffect(() => {
@@ -126,10 +136,9 @@ export default function IndividualPhase() {
 
       {done && (() => {
         const groupSize = session?.phaseConfig?.groupSize ?? 3
-        // Count from Firestore, but always include self even if listener hasn't updated yet
         const firestoreCount = groupMembers.filter(m => m.individualComplete).length
-		const selfCounted = groupMembers.some(m => m.id === user?.uid && m.individualComplete)
-		const doneCount = (done && !selfCounted) ? firestoreCount + 1 : firestoreCount
+        const selfCounted = groupMembers.some(m => m.id === user?.uid && m.individualComplete)
+        const doneCount = (done && !selfCounted) ? firestoreCount + 1 : firestoreCount
         return (
           <div className={styles.waitingBanner}>
             {groupSize === 1

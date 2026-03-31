@@ -80,6 +80,24 @@ exports.submitVote = functions.https.onCall(async (data, context) => {
       finalIdeas: top3,
       votingCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
+
+    // Check if all participants across the session have now voted (status: survey or done).
+    // If so, auto-advance session to survey.
+    const allParticipantsSnap = await sessionRef.collection('participants').get()
+    const allVotedSession = allParticipantsSnap.docs.every(d => {
+      const p = d.data()
+      return ['survey', 'done'].includes(p.status)
+    })
+
+    if (allVotedSession) {
+      const sessionSnap = await sessionRef.get()
+      if (sessionSnap.exists && sessionSnap.data().status === 'voting') {
+        await sessionRef.update({
+          status: 'survey',
+          phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      }
+    }
   }
 
   return { success: true, allVoted }

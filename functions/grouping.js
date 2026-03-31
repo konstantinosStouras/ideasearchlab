@@ -67,6 +67,20 @@ exports.autoGroupParticipants = functions.firestore
             status: 'waiting_for_group',
           })
         })
+
+        // Check if all participants are now grouped or in survey/done.
+        // If so, auto-advance session to 'group'.
+        const allSnap = await tx.get(sessionRef.collection('participants'))
+        const allDone = allSnap.docs.every(d => {
+          const p = d.data()
+          return p.groupId || ['survey', 'done'].includes(p.status)
+        })
+        if (allDone && session.status === 'individual') {
+          tx.update(sessionRef, {
+            status: 'group',
+            phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+          })
+        }
         return
       }
 
@@ -96,6 +110,20 @@ exports.autoGroupParticipants = functions.firestore
       } else if (ready.length >= 2) {
         // Form a smaller group with whoever is left
         await formGroup(tx, sessionRef, ready)
+      }
+
+      // After handling remainders, check if all participants are now resolved.
+      // Re-read allSnap to get updated state.
+      const finalSnap = await tx.get(sessionRef.collection('participants'))
+      const allResolved = finalSnap.docs.every(d => {
+        const p = d.data()
+        return p.groupId || ['survey', 'done'].includes(p.status)
+      })
+      if (allResolved && session.status === 'individual') {
+        tx.update(sessionRef, {
+          status: 'group',
+          phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
       }
     })
   })

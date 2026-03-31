@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
   orderBy, serverTimestamp, doc, updateDoc
@@ -16,6 +16,7 @@ export default function IndividualPhase() {
   const { sessionId } = useParams()
   const { user } = useAuth()
   const { session } = useSession()
+  const navigate = useNavigate()
   const [ideas, setIdeas] = useState([])
   const [newIdea, setNewIdea] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -24,6 +25,26 @@ export default function IndividualPhase() {
   const pc = session?.phaseConfig || {}
   const maxIdeas = pc.maxIdeasIndividual || 5
   const aiEnabled = session?.aiConfig?.individualAI
+
+  // Listen to own participant status and redirect when it changes
+  useEffect(() => {
+    if (!sessionId || !user) return
+    const unsub = onSnapshot(
+      doc(db, 'sessions', sessionId, 'participants', user.uid),
+      snap => {
+        if (!snap.exists()) return
+        const status = snap.data().status
+        if (status === 'group' || status === 'voting') {
+          navigate(`/session/${sessionId}/group`)
+        } else if (status === 'survey') {
+          navigate(`/session/${sessionId}/survey`)
+        } else if (status === 'done') {
+          navigate(`/session/${sessionId}/done`)
+        }
+      }
+    )
+    return unsub
+  }, [sessionId, user, navigate])
 
   // Listen to this user's ideas
   useEffect(() => {

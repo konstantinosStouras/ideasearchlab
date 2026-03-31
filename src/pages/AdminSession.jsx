@@ -128,13 +128,18 @@ export default function AdminSession() {
                 </>
               )}
             </div>
-            <button
-              className="btn-primary"
-              onClick={advancePhase}
-              disabled={advancing || isLast}
-            >
-              {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Advance to: ${nextPhase}`}
-            </button>
+            <div className={styles.advanceRight}>
+              {['waiting', 'individual', 'group'].includes(session.status) && (
+                <span className={styles.autoNote}>Auto-advances when participants complete</span>
+              )}
+              <button
+                className="btn-primary"
+                onClick={advancePhase}
+                disabled={advancing || isLast}
+              >
+                {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Force advance: ${nextPhase}`}
+              </button>
+            </div>
           </div>
         )}
 

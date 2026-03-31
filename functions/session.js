@@ -5,9 +5,11 @@ const db = admin.firestore()
 
 /**
  * joinSession
- * Validates a session code and registers the participant.
- * Called from the JoinSession page (in addition to the direct Firestore write).
- * Acts as a server-side validation layer.
+ *
+ * Registers the participant. If enough people are now in the lobby to fill a
+ * group, immediately assigns them all to a group and starts their first phase.
+ * Groups form on a rolling basis: once X people are unassigned in the lobby,
+ * they get a group and begin. Remaining participants wait until more join.
  */
 exports.joinSession = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
@@ -34,33 +36,112 @@ exports.joinSession = functions.https.onCall(async (data, context) => {
   const existingSnap = await participantRef.get()
 
   if (existingSnap.exists) {
-    // Participant already registered — only update name/email, never touch
-    // status, individualComplete, or groupId (those track session progress)
+    // Rejoin — only update name/email, never touch progress fields
     await participantRef.update({
       name: context.auth.token.name || context.auth.token.email,
       email: context.auth.token.email,
     })
-  } else {
-    // First join — create the participant document with initial state
-    await participantRef.set({
-      name: context.auth.token.name || context.auth.token.email,
-      email: context.auth.token.email,
-      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-      status: 'waiting',
-      individualComplete: false,
-      groupId: null,
-    })
+    return { sessionId, status: session.status }
   }
+
+  // First join — register with waiting status
+  await participantRef.set({
+    name: context.auth.token.name || context.auth.token.email,
+    email: context.auth.token.email,
+    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+    status: 'waiting',
+    individualComplete: false,
+    groupId: null,
+  })
+
+  // Try to form a group from waiting participants
+  await tryFormGroup(sessionId, session)
 
   return { sessionId, status: session.status }
 })
 
 
 /**
+ * tryFormGroup
+ *
+ * Checks if enough unassigned participants are waiting to form a group.
+ * If yes, assigns them a group and moves them to the first phase.
+ * Uses a transaction to prevent race conditions.
+ */
+async function tryFormGroup(sessionId, session) {
+  const groupSize = session.phaseConfig?.groupSize ?? 3
+  const phaseOrder = session.phaseConfig?.phaseOrder ?? 'individual_first'
+  const individualActive = session.phaseConfig?.individualPhaseActive ?? true
+  const groupActive = session.phaseConfig?.groupPhaseActive ?? true
+
+  // Determine which phase participants should enter
+  let firstPhase
+  if (individualActive && phaseOrder === 'individual_first') {
+    firstPhase = 'individual'
+  } else if (groupActive) {
+    firstPhase = 'group'
+  } else {
+    firstPhase = 'survey'
+  }
+
+  const sessionRef = db.collection('sessions').doc(sessionId)
+
+  await db.runTransaction(async (tx) => {
+    // Get all unassigned waiting participants
+    const waitingSnap = await tx.get(
+      sessionRef.collection('participants').where('status', '==', 'waiting')
+    )
+
+    const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    if (waiting.length < groupSize) return // not enough yet
+
+    // Take the first groupSize participants and shuffle for anonymous ordering
+    const toAssign = waiting.slice(0, groupSize)
+    const shuffled = [...toAssign].sort(() => Math.random() - 0.5)
+
+    // Create group document with anonymised member labels
+    const groupRef = sessionRef.collection('groups').doc()
+    const memberLabels = {}
+    shuffled.forEach((p, i) => {
+      memberLabels[p.id] = `p${i + 1}`
+    })
+
+    tx.set(groupRef, {
+      members: shuffled.map(p => p.id),
+      memberLabels,
+      status: 'active',
+      finalIdeas: [],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+
+    // Move participants into their first phase
+    shuffled.forEach(p => {
+      tx.update(sessionRef.collection('participants').doc(p.id), {
+        groupId: groupRef.id,
+        status: firstPhase,
+        anonymousLabel: memberLabels[p.id],
+      })
+    })
+
+    // If session is still waiting, advance it to the first phase
+    const sessionSnap = await tx.get(sessionRef)
+    if (sessionSnap.exists && sessionSnap.data().status === 'waiting') {
+      tx.update(sessionRef, {
+        status: firstPhase,
+        phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+    }
+  })
+}
+
+
+/**
  * advancePhase
- * Moves the session to the next phase in its sequence.
- * Only the instructor (session owner) can call this.
- * Also updates participant statuses accordingly.
+ *
+ * Instructor-controlled advancement. Used for voting → survey → done.
+ * Individual and group phase transitions happen automatically via
+ * joinSession and autoGroupParticipants.
  */
 exports.advancePhase = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
@@ -100,24 +181,13 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
     const p = pDoc.data()
     let newStatus = p.status
 
-    if (nextPhase === 'individual') {
-      if (p.status === 'waiting') newStatus = 'individual'
-    }
-
     if (nextPhase === 'group') {
-      if (session.phaseConfig?.phaseOrder === 'group_first') {
-        // group_first: move waiting participants into group
-        if (p.status === 'waiting') newStatus = 'group'
-      } else {
-        // individual_first: move anyone not yet in group
-        if (['waiting', 'individual', 'waiting_for_group'].includes(p.status)) {
-          newStatus = 'group'
-        }
+      if (['waiting', 'individual', 'waiting_for_group'].includes(p.status)) {
+        newStatus = 'group'
       }
     }
 
     if (nextPhase === 'voting') {
-      // Move all active group participants to voting
       if (p.status === 'group') newStatus = 'voting'
     }
 
@@ -136,65 +206,12 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
 
   await batch.commit()
 
-  if (nextPhase === 'group' && session.phaseConfig?.phaseOrder === 'group_first') {
-    await preAssignGroups(sessionId, participantsSnap.docs.map(d => ({ id: d.id, ...d.data() })), session.phaseConfig)
-  }
-
   return { nextPhase }
 })
 
 
 /**
- * Pre-assigns groups when phaseOrder === 'group_first'.
- * Groups participants immediately without waiting for individual completion.
- */
-async function preAssignGroups(sessionId, participants, phaseConfig) {
-  const sessionRef = db.collection('sessions').doc(sessionId)
-  const groupSize = phaseConfig?.groupSize ?? 3
-  const shuffled = [...participants].sort(() => Math.random() - 0.5)
-  const batch = db.batch()
-
-  let i = 0
-  while (i < shuffled.length) {
-    const remaining = shuffled.length - i
-
-    if (remaining === 1) {
-      batch.update(
-        sessionRef.collection('participants').doc(shuffled[i].id),
-        { status: 'survey' }
-      )
-      i++
-      continue
-    }
-
-    const size = Math.min(groupSize, remaining)
-    const groupMembers = shuffled.slice(i, i + size)
-    const groupRef = sessionRef.collection('groups').doc()
-
-    batch.set(groupRef, {
-      members: groupMembers.map(m => m.id),
-      status: 'active',
-      finalIdeas: [],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
-
-    groupMembers.forEach(m => {
-      batch.update(
-        sessionRef.collection('participants').doc(m.id),
-        { groupId: groupRef.id, status: 'group' }
-      )
-    })
-
-    i += size
-  }
-
-  await batch.commit()
-}
-
-
-/**
  * Shared phase sequence logic (mirrors frontend utils/phaseSequence.js).
- * Must stay in sync with the frontend version.
  */
 function getPhaseSequence(phaseConfig = {}) {
   const {

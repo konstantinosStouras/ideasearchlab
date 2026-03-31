@@ -61,7 +61,6 @@ exports.submitVote = functions.https.onCall(async (data, context) => {
   const allVoted = members.every(m => m.id === uid || m.votedFor)
 
   if (allVoted) {
-    // Tally votes across all members and find top 3
     const voteMap = {}
     members.forEach(m => {
       const voted = m.id === uid ? ideaIds : (m.votedFor || [])
@@ -81,14 +80,11 @@ exports.submitVote = functions.https.onCall(async (data, context) => {
       votingCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
-    // Check if all participants across the session have now voted (status: survey or done).
-    // If so, auto-advance session to survey.
+    // Auto-advance session to survey when all participants have voted
     const allParticipantsSnap = await sessionRef.collection('participants').get()
-    const allVotedSession = allParticipantsSnap.docs.every(d => {
-      const p = d.data()
-      return ['survey', 'done'].includes(p.status)
-    })
-
+    const allVotedSession = allParticipantsSnap.docs.every(d =>
+      ['survey', 'done'].includes(d.data().status)
+    )
     if (allVotedSession) {
       const sessionSnap = await sessionRef.get()
       if (sessionSnap.exists && sessionSnap.data().status === 'voting') {

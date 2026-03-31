@@ -6,16 +6,10 @@ const db = admin.firestore()
 /**
  * autoGroupParticipants
  *
- * Firestore-triggered function. Fires whenever a participant document is updated.
- * When a participant's individualComplete flips to true, checks how many
- * unassigned completed participants exist. If 3 or more are ready, forms a group.
- *
- * Handles remainders:
- *   - 2 left: forms a group of 2
- *   - 1 left after session ends: moves them directly to survey
- *
- * Uses a Firestore transaction to prevent race conditions when multiple
- * participants complete at the same time.
+ * Firestore-triggered. Fires when a participant document is updated.
+ * Handles the individual_first rolling transition: when all members of a group
+ * complete the individual phase, move that group to the group phase.
+ * Also auto-advances the session status when all groups are in group phase.
  */
 exports.autoGroupParticipants = functions.firestore
   .document('sessions/{sessionId}/participants/{participantId}')
@@ -26,100 +20,67 @@ exports.autoGroupParticipants = functions.firestore
     // Only act when individualComplete flips from false to true
     if (before.individualComplete === after.individualComplete) return
     if (!after.individualComplete) return
-    if (after.groupId) return // already assigned
+
+    const groupId = after.groupId
+    if (!groupId) return // not in a group yet (still waiting in lobby)
 
     const { sessionId } = context.params
     const sessionRef = db.collection('sessions').doc(sessionId)
 
-    // Run inside a transaction to avoid race conditions
     await db.runTransaction(async (tx) => {
       const sessionSnap = await tx.get(sessionRef)
       if (!sessionSnap.exists) return
 
       const session = sessionSnap.data()
 
-      // Only run rolling formation during individual_first flow
+      // Only run during individual_first flow
       if (
         !session.phaseConfig?.individualPhaseActive ||
         !session.phaseConfig?.groupPhaseActive ||
         session.phaseConfig?.phaseOrder !== 'individual_first'
       ) return
 
-      const groupSize = session.phaseConfig?.groupSize ?? 3
-
-      // Find all unassigned completed participants
-      const readySnap = await tx.get(
-        sessionRef.collection('participants')
-          .where('individualComplete', '==', true)
-          .where('groupId', '==', null)
+      // Get all members of this participant's group
+      const groupMembersSnap = await tx.get(
+        sessionRef.collection('participants').where('groupId', '==', groupId)
       )
 
-      const ready = readySnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const members = groupMembersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-      if (ready.length >= groupSize) {
-        // Enough for a full group: take the first groupSize and form a group
-        const toGroup = ready.slice(0, groupSize)
-        await formGroup(tx, sessionRef, toGroup)
+      // Check if ALL members of this group have completed individual phase
+      // (use the updated data for the current participant)
+      const allDone = members.every(m =>
+        m.id === after.uid ? true : m.individualComplete
+      )
+      // More precisely: check by id matching change.after.ref
+      const allGroupDone = members.every(m => {
+        if (m.id === change.after.id) return true // this is the one who just flipped
+        return m.individualComplete
+      })
 
-        // Mark the rest as waiting_for_group
-        ready.slice(groupSize).forEach(p => {
-          tx.update(sessionRef.collection('participants').doc(p.id), {
-            status: 'waiting_for_group',
-          })
-        })
-
-        // Check if all participants are now grouped or in survey/done.
-        // If so, auto-advance session to 'group'.
-        const allSnap = await tx.get(sessionRef.collection('participants'))
-        const allDone = allSnap.docs.every(d => {
-          const p = d.data()
-          return p.groupId || ['survey', 'done'].includes(p.status)
-        })
-        if (allDone && session.status === 'individual') {
-          tx.update(sessionRef, {
-            status: 'group',
-            phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-          })
-        }
+      if (!allGroupDone) {
+        // Not all group members done yet - update status to waiting_for_group
+        tx.update(change.after.ref, { status: 'waiting_for_group' })
         return
       }
 
-      // Fewer than groupSize are ready. Check if anyone is still working.
-      const allSnap = await tx.get(sessionRef.collection('participants'))
-      const anyStillWorking = allSnap.docs.some(d => {
-        const p = d.data()
-        return !p.individualComplete && !p.groupId
+      // All group members done - move them all to group phase
+      members.forEach(m => {
+        tx.update(sessionRef.collection('participants').doc(m.id), {
+          status: 'group',
+        })
       })
 
-      if (anyStillWorking) {
-        // More participants still coming, keep everyone waiting
-        ready.forEach(p => {
-          tx.update(sessionRef.collection('participants').doc(p.id), {
-            status: 'waiting_for_group',
-          })
-        })
-        return
-      }
-
-      // Nobody left working. Handle remainders.
-      if (ready.length === 1) {
-        // Solo straggler goes directly to survey
-        tx.update(sessionRef.collection('participants').doc(ready[0].id), {
-          status: 'survey',
-        })
-      } else if (ready.length >= 2) {
-        // Form a smaller group with whoever is left
-        await formGroup(tx, sessionRef, ready)
-      }
-
-      // After handling remainders, check if all participants are now resolved.
-      // Re-read allSnap to get updated state.
-      const finalSnap = await tx.get(sessionRef.collection('participants'))
-      const allResolved = finalSnap.docs.every(d => {
+      // Check if ALL participants in the session are now in group/survey/done
+      const allParticipantsSnap = await tx.get(sessionRef.collection('participants'))
+      const allSessionDone = allParticipantsSnap.docs.every(d => {
         const p = d.data()
-        return p.groupId || ['survey', 'done'].includes(p.status)
+        // Count the current participant as 'group' since we just set it
+        if (d.id === change.after.id) return true
+        return ['group', 'voting', 'survey', 'done'].includes(p.status) || p.groupId
       })
-      if (allResolved && session.status === 'individual') {
+
+      if (allSessionDone && session.status === 'individual') {
         tx.update(sessionRef, {
           status: 'group',
           phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -130,36 +91,11 @@ exports.autoGroupParticipants = functions.firestore
 
 
 /**
- * Forms a group from the given participants.
- * Creates the group document and updates each participant.
- * Must be called inside a Firestore transaction.
- */
-async function formGroup(tx, sessionRef, members) {
-  const groupRef = sessionRef.collection('groups').doc()
-
-  tx.set(groupRef, {
-    members: members.map(m => m.id),
-    status: 'active',
-    finalIdeas: [],
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  })
-
-  members.forEach(m => {
-    tx.update(sessionRef.collection('participants').doc(m.id), {
-      groupId: groupRef.id,
-      status: 'group',
-    })
-  })
-}
-
-
-/**
  * handleStragglers
  *
  * HTTPS callable - instructor can trigger this manually to handle
- * any participants still in waiting_for_group at the end of the session.
- * 1 leftover -> send directly to survey
- * 2 leftovers -> form a group of 2
+ * any participants still waiting in the lobby (not enough joined to fill a group).
+ * Forms undersized groups or sends solo participants to survey.
  */
 exports.handleStragglers = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
@@ -177,49 +113,48 @@ exports.handleStragglers = functions.https.onCall(async (data, context) => {
   }
 
   const groupSize = session.phaseConfig?.groupSize ?? 3
+  const phaseOrder = session.phaseConfig?.phaseOrder ?? 'individual_first'
+  const individualActive = session.phaseConfig?.individualPhaseActive ?? true
+  const firstPhase = (individualActive && phaseOrder === 'individual_first') ? 'individual' : 'group'
 
-  const stragglersSnap = await sessionRef.collection('participants')
-    .where('status', '==', 'waiting_for_group')
+  const waitingSnap = await sessionRef.collection('participants')
+    .where('status', '==', 'waiting')
     .get()
 
-  const stragglers = stragglersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   const batch = db.batch()
 
-  if (stragglers.length === 0) {
-    return { handled: 0 }
-  }
+  if (waiting.length === 0) return { handled: 0 }
 
-  // Pack stragglers into groups using the session's groupSize.
-  // Any final solo leftover goes directly to survey.
-  let i = 0
-  while (i < stragglers.length) {
-    const remaining = stragglers.length - i
-    if (remaining === 1) {
-      batch.update(
-        sessionRef.collection('participants').doc(stragglers[i].id),
-        { status: 'survey' }
-      )
-      i++
-    } else {
-      const size = Math.min(groupSize, remaining)
-      const groupMembers = stragglers.slice(i, i + size)
-      const groupRef = sessionRef.collection('groups').doc()
-      batch.set(groupRef, {
-        members: groupMembers.map(m => m.id),
-        status: 'active',
-        finalIdeas: [],
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  if (waiting.length === 1) {
+    batch.update(
+      sessionRef.collection('participants').doc(waiting[0].id),
+      { status: 'survey' }
+    )
+  } else {
+    // Form an undersized group with whoever is left
+    const shuffled = [...waiting].sort(() => Math.random() - 0.5)
+    const groupRef = sessionRef.collection('groups').doc()
+    const memberLabels = {}
+    shuffled.forEach((p, i) => { memberLabels[p.id] = `p${i + 1}` })
+
+    batch.set(groupRef, {
+      members: shuffled.map(p => p.id),
+      memberLabels,
+      status: 'active',
+      finalIdeas: [],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+
+    shuffled.forEach(p => {
+      batch.update(sessionRef.collection('participants').doc(p.id), {
+        groupId: groupRef.id,
+        status: firstPhase,
+        anonymousLabel: memberLabels[p.id],
       })
-      groupMembers.forEach(m => {
-        batch.update(sessionRef.collection('participants').doc(m.id), {
-          groupId: groupRef.id,
-          status: 'group',
-        })
-      })
-      i += size
-    }
+    })
   }
 
   await batch.commit()
-  return { handled: stragglers.length }
+  return { handled: waiting.length }
 })

@@ -71,31 +71,26 @@ export default function SessionLobby() {
           <p className={styles.sessionCode}>
             Session <strong>{session.code}</strong>
           </p>
-          <p className={styles.desc}>
-            Waiting for your instructor to start the session. Sit tight.
-          </p>
-
-          <div className={styles.stats}>
-            <div className={styles.stat}>
-              <span className={styles.statNum}>{totalCount}</span>
-              <span className={styles.statLabel}>joined</span>
-            </div>
-            <div className={styles.statDivider} />
-            <div className={styles.stat}>
-              <span className={styles.statNum}>{waitingCount}</span>
-              <span className={styles.statLabel}>waiting</span>
-            </div>
-          </div>
-
-          <ul className={styles.participantList}>
-            {participants.map(p => (
-              <li key={p.id} className={styles.participant}>
-                <span className={styles.dot} />
-                <span>{p.name}</span>
-                {p.id === user?.uid && <span className={styles.you}>(you)</span>}
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            const groupSize = session?.phaseConfig?.groupSize ?? 3
+            const filled = Math.min(totalCount, groupSize)
+            const needed = Math.max(0, groupSize - totalCount)
+            return (
+              <>
+                <p className={styles.desc}>
+                  {needed > 0
+                    ? `Waiting for ${needed} more participant${needed === 1 ? '' : 's'} to join before your group can begin.`
+                    : 'Your group is full. Starting soon...'}
+                </p>
+                <div className={styles.stats}>
+                  <div className={styles.stat}>
+                    <span className={styles.statNum}>{filled}</span>
+                    <span className={styles.statLabel}>of {groupSize} joined</span>
+                  </div>
+                </div>
+              </>
+            )
+          })()}
         </div>
       </main>
     </div>

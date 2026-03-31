@@ -18,6 +18,7 @@ export default function GroupPhase() {
   const { session } = useSession()
   const navigate = useNavigate()
   const [groupId, setGroupId] = useState(null)
+  const [memberLabels, setMemberLabels] = useState({})
   const [members, setMembers] = useState([])
   const [ideas, setIdeas] = useState([])
   const [newIdea, setNewIdea] = useState('')
@@ -27,7 +28,7 @@ export default function GroupPhase() {
   const aiEnabled = session?.aiConfig?.groupAI
   const ideasCarried = pc.ideasCarriedToGroup || 3
 
-  // Get my groupId and react to status changes
+  // Get groupId, anonymous labels, and react to status changes
   useEffect(() => {
     if (!sessionId || !user) return
     const unsub = onSnapshot(
@@ -37,15 +38,24 @@ export default function GroupPhase() {
         const data = snap.data()
         setGroupId(data.groupId)
         const status = data.status
-        if (status === 'survey') {
-          navigate(`/session/${sessionId}/survey`)
-        } else if (status === 'done') {
-          navigate(`/session/${sessionId}/done`)
-        }
+        if (status === 'survey') navigate(`/session/${sessionId}/survey`)
+        else if (status === 'done') navigate(`/session/${sessionId}/done`)
       }
     )
     return unsub
   }, [sessionId, user, navigate])
+
+  // Load member labels from group document
+  useEffect(() => {
+    if (!sessionId || !groupId) return
+    const unsub = onSnapshot(
+      doc(db, 'sessions', sessionId, 'groups', groupId),
+      snap => {
+        if (snap.exists()) setMemberLabels(snap.data().memberLabels || {})
+      }
+    )
+    return unsub
+  }, [sessionId, groupId])
 
   // Listen to group members
   useEffect(() => {
@@ -111,10 +121,7 @@ export default function GroupPhase() {
     }
   }
 
-  // Voting is advanced by the instructor via advancePhase Cloud Function.
-  // The participant status listener above will navigate automatically.
-
-  const allIdeas = [...(ideas.individual || []), ...(ideas.group || [])]
+  // Voting is advanced by the instructor. Status listener above handles redirect.
 
   const mainPanel = (
     <div className={styles.main}>
@@ -149,7 +156,7 @@ export default function GroupPhase() {
               return (
                 <div key={idea.id} className={styles.ideaCard}>
                   <div className={styles.ideaHeader}>
-                    <span className={styles.ideaAuthor}>{author?.name?.split(' ')[0] || '?'}</span>
+                    <span className={styles.ideaAuthor}>{memberLabels[idea.authorId] || '?'}</span>
                     {idea.authorId === user.uid && <span className={styles.youTag}>you</span>}
                   </div>
                   <p className={styles.ideaText}>{idea.text}</p>
@@ -167,7 +174,7 @@ export default function GroupPhase() {
             {(ideas.group || []).map(idea => (
               <div key={idea.id} className={`${styles.ideaCard} ${styles.groupCard}`}>
                 <div className={styles.ideaHeader}>
-                  <span className={styles.ideaAuthor}>{idea.authorName?.split(' ')[0]}</span>
+                  <span className={styles.ideaAuthor}>{memberLabels[idea.authorId] || '?'}</span>
                 </div>
                 <p className={styles.ideaText}>{idea.text}</p>
               </div>

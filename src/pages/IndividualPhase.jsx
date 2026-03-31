@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
   orderBy, serverTimestamp, doc, updateDoc
@@ -16,35 +16,16 @@ export default function IndividualPhase() {
   const { sessionId } = useParams()
   const { user } = useAuth()
   const { session } = useSession()
-  const navigate = useNavigate()
   const [ideas, setIdeas] = useState([])
   const [newIdea, setNewIdea] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [groupMembers, setGroupMembers] = useState([])
+  const [groupId, setGroupId] = useState(null)
 
   const pc = session?.phaseConfig || {}
   const maxIdeas = pc.maxIdeasIndividual || 5
   const aiEnabled = session?.aiConfig?.individualAI
-
-  // Listen to own participant status and redirect when it changes
-  useEffect(() => {
-    if (!sessionId || !user) return
-    const unsub = onSnapshot(
-      doc(db, 'sessions', sessionId, 'participants', user.uid),
-      snap => {
-        if (!snap.exists()) return
-        const status = snap.data().status
-        if (status === 'group' || status === 'voting') {
-          navigate(`/session/${sessionId}/group`)
-        } else if (status === 'survey') {
-          navigate(`/session/${sessionId}/survey`)
-        } else if (status === 'done') {
-          navigate(`/session/${sessionId}/done`)
-        }
-      }
-    )
-    return unsub
-  }, [sessionId, user, navigate])
 
   // Listen to this user's ideas
   useEffect(() => {
@@ -60,6 +41,29 @@ export default function IndividualPhase() {
     })
     return unsub
   }, [sessionId, user])
+
+  // Get groupId from own participant doc
+  useEffect(() => {
+    if (!sessionId || !user) return
+    const unsub = onSnapshot(
+      doc(db, 'sessions', sessionId, 'participants', user.uid),
+      snap => { if (snap.exists()) setGroupId(snap.data().groupId) }
+    )
+    return unsub
+  }, [sessionId, user])
+
+  // Listen to group members to show completion count
+  useEffect(() => {
+    if (!sessionId || !groupId) return
+    const unsub = onSnapshot(
+      query(
+        collection(db, 'sessions', sessionId, 'participants'),
+        where('groupId', '==', groupId)
+      ),
+      snap => setGroupMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    )
+    return unsub
+  }, [sessionId, groupId])
 
   async function submitIdea(e) {
     e.preventDefault()
@@ -120,13 +124,17 @@ export default function IndividualPhase() {
         </div>
       </div>
 
-      {done && (
-        <div className={styles.waitingBanner}>
-          {pc.groupSize === 1
-            ? 'Your ideas are submitted. Proceeding to the next phase...'
-            : `Your ideas are submitted. Waiting for others to finish before your group forms.`}
-        </div>
-      )}
+      {done && (() => {
+        const groupSize = session?.phaseConfig?.groupSize ?? 3
+        const doneCount = groupMembers.filter(m => m.individualComplete).length
+        return (
+          <div className={styles.waitingBanner}>
+            {groupSize === 1
+              ? 'Your ideas are submitted. Proceeding to the next phase...'
+              : `${doneCount} of ${groupSize} group members have submitted.`}
+          </div>
+        )
+      })()}
 
       {/* Idea list */}
       <div className={styles.ideaList}>

@@ -243,7 +243,7 @@ export default function Admin() {
                 <div className={styles.createdCodeBox}>
                   <p className={styles.createdCodeLabel}>Session created! Share this code with participants:</p>
                   <div className={styles.createdCode}>{lastCreatedCode}</div>
-                  <p className={styles.createdCodeHint}>Share this code before your session begins. Participants join at: <a href="https://www.stouras.com/lab/ideasearchlab" target="_blank" rel="noreferrer">stouras.com/lab/ideasearchlab</a></p>
+                  <p className={styles.createdCodeHint}>Share this code before your session begins. Participants join at: <a href="https://www.stouras.com/lab/ideasearchlab/join" target="_blank" rel="noreferrer">stouras.com/lab/ideasearchlab/join</a></p>
                 </div>
               )}
 

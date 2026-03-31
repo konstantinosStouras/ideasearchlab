@@ -27,18 +27,30 @@ exports.joinSession = functions.https.onCall(async (data, context) => {
   const sessionId = sessionDoc.id
   const session = sessionDoc.data()
 
-  // Register participant (merge: true so re-joins don't overwrite progress)
-  await db
+  const participantRef = db
     .collection('sessions').doc(sessionId)
     .collection('participants').doc(context.auth.uid)
-    .set({
+
+  const existingSnap = await participantRef.get()
+
+  if (existingSnap.exists) {
+    // Participant already registered — only update name/email, never touch
+    // status, individualComplete, or groupId (those track session progress)
+    await participantRef.update({
+      name: context.auth.token.name || context.auth.token.email,
+      email: context.auth.token.email,
+    })
+  } else {
+    // First join — create the participant document with initial state
+    await participantRef.set({
       name: context.auth.token.name || context.auth.token.email,
       email: context.auth.token.email,
       joinedAt: admin.firestore.FieldValue.serverTimestamp(),
       status: 'waiting',
       individualComplete: false,
       groupId: null,
-    }, { merge: true })
+    })
+  }
 
   return { sessionId, status: session.status }
 })
@@ -89,17 +101,14 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
     let newStatus = p.status
 
     if (nextPhase === 'individual') {
-      // Only move waiting participants into individual
       if (p.status === 'waiting') newStatus = 'individual'
     }
 
     if (nextPhase === 'group' && session.phaseConfig?.phaseOrder === 'group_first') {
-      // group_first: everyone starts in group phase, pre-assign groups
       if (p.status === 'waiting') newStatus = 'group'
     }
 
     if (nextPhase === 'survey') {
-      // Push everyone who hasn't reached survey/done yet
       if (!['survey', 'done'].includes(p.status)) newStatus = 'survey'
     }
 
@@ -114,9 +123,8 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
 
   await batch.commit()
 
-  // If group_first, pre-assign groups now
   if (nextPhase === 'group' && session.phaseConfig?.phaseOrder === 'group_first') {
-    await preAssignGroups(sessionId, participantsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+    await preAssignGroups(sessionId, participantsSnap.docs.map(d => ({ id: d.id, ...d.data() })), session.phaseConfig)
   }
 
   return { nextPhase }
@@ -127,8 +135,9 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
  * Pre-assigns groups when phaseOrder === 'group_first'.
  * Groups participants immediately without waiting for individual completion.
  */
-async function preAssignGroups(sessionId, participants) {
+async function preAssignGroups(sessionId, participants, phaseConfig) {
   const sessionRef = db.collection('sessions').doc(sessionId)
+  const groupSize = phaseConfig?.groupSize ?? 3
   const shuffled = [...participants].sort(() => Math.random() - 0.5)
   const batch = db.batch()
 
@@ -136,23 +145,17 @@ async function preAssignGroups(sessionId, participants) {
   while (i < shuffled.length) {
     const remaining = shuffled.length - i
 
-    // Determine group size: 3, or 2 if only 2 left, skip if only 1 left
-    let groupSize
     if (remaining === 1) {
-      // 1 leftover: move directly to survey
       batch.update(
         sessionRef.collection('participants').doc(shuffled[i].id),
         { status: 'survey' }
       )
       i++
       continue
-    } else if (remaining === 2) {
-      groupSize = 2
-    } else {
-      groupSize = 3
     }
 
-    const groupMembers = shuffled.slice(i, i + groupSize)
+    const size = Math.min(groupSize, remaining)
+    const groupMembers = shuffled.slice(i, i + size)
     const groupRef = sessionRef.collection('groups').doc()
 
     batch.set(groupRef, {
@@ -169,7 +172,7 @@ async function preAssignGroups(sessionId, participants) {
       )
     })
 
-    i += groupSize
+    i += size
   }
 
   await batch.commit()

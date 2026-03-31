@@ -51,4 +51,5 @@ jobs:
           git config user.email "github-actions@github.com"
           git add lab/ideasearchlab/
           git commit -m "Deploy ideation app to lab/ideasearchlab" || echo "Nothing to commit"
-          git push --force
+          git pull --rebase origin master || true
+          git push origin master

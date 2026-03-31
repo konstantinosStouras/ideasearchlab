@@ -196,7 +196,7 @@ export default function GroupPhase() {
                 type="text"
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
-                placeholder="Product name"
+                placeholder="Idea title"
                 disabled={submitting}
               />
               <div className={styles.addDivider} />
@@ -204,7 +204,7 @@ export default function GroupPhase() {
                 className={styles.addDescInput}
                 value={newDesc}
                 onChange={e => setNewDesc(e.target.value)}
-                placeholder="One line description"
+                placeholder="Description"
                 rows={2}
                 disabled={submitting}
               />

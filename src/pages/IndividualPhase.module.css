@@ -317,6 +317,22 @@
 .ideaPill:hover .editBtn { opacity: 1; }
 .editBtn:hover { color: var(--accent); background: rgba(200,86,42,0.08); }
 
+/* Delete (trash) button */
+.deleteBtn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+}
+.ideaPill:hover .deleteBtn { opacity: 1; }
+.deleteBtn:hover { color: #c0392b; background: rgba(192,57,43,0.08); }
+
 /* ─── Edit mode ──────────────────────────── */
 .ideaPillEditing {
   border-color: var(--accent);

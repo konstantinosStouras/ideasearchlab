@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
-  orderBy, serverTimestamp, doc, updateDoc, writeBatch
+  orderBy, serverTimestamp, doc, updateDoc, deleteDoc, writeBatch
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -154,6 +154,19 @@ export default function IndividualPhase() {
 
   function cancelEdit() { setEditingId(null) }
 
+  async function deleteIdea(ideaId) {
+    try {
+      await deleteDoc(doc(db, 'sessions', sessionId, 'ideas', ideaId))
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        next.delete(ideaId)
+        return next
+      })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   async function markDone() {
     if (done) return
     setDone(true)
@@ -303,8 +316,8 @@ export default function IndividualPhase() {
             <div className={styles.briefDetails}>
               <p>
                 You can generate up to <strong>{maxIdeas} original product ideas</strong>.
-                Each idea should include a <strong>product name</strong> and a{' '}
-                <strong>one line description</strong> explaining what it does, how it
+                Each idea should include an <strong>idea title</strong> and a{' '}
+                <strong>description</strong> explaining what it does, how it
                 works, and why it's unique.
               </p>
               <p>Use the following <strong>evaluation criteria</strong> to guide your thinking:</p>
@@ -356,7 +369,7 @@ export default function IndividualPhase() {
                     className={styles.editTitleInput}
                     value={editTitle}
                     onChange={e => setEditTitle(e.target.value)}
-                    placeholder="Product name"
+                    placeholder="Idea title"
                     autoFocus
                   />
                   <textarea
@@ -394,16 +407,29 @@ export default function IndividualPhase() {
                 <div className={styles.pillActions}>
                   {isSelected && <span className={styles.selectedBadge}>Selected</span>}
                   {!done && (
-                    <button
-                      className={styles.editBtn}
-                      onClick={e => { e.stopPropagation(); startEdit(idea) }}
-                      title="Edit idea"
-                      type="button"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                        <path d="M10.08 1.34a1.17 1.17 0 0 1 1.66 0l.92.92a1.17 1.17 0 0 1 0 1.66L4.8 11.78l-3.3.92.92-3.3L10.08 1.34Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
+                    <>
+                      <button
+                        className={styles.editBtn}
+                        onClick={e => { e.stopPropagation(); startEdit(idea) }}
+                        title="Edit idea"
+                        type="button"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                          <path d="M10.08 1.34a1.17 1.17 0 0 1 1.66 0l.92.92a1.17 1.17 0 0 1 0 1.66L4.8 11.78l-3.3.92.92-3.3L10.08 1.34Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        className={styles.deleteBtn}
+                        onClick={e => { e.stopPropagation(); deleteIdea(idea.id) }}
+                        title="Delete idea"
+                        type="button"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                          <path d="M1.5 3.5h11M5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M3.5 3.5l.5 8.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M5.5 6v4M8.5 6v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -424,7 +450,7 @@ export default function IndividualPhase() {
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="Product name"
+              placeholder="Idea title"
               disabled={submitting || done}
             />
             <div className={styles.addDivider} />
@@ -432,7 +458,7 @@ export default function IndividualPhase() {
               className={styles.addDescInput}
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="One line description"
+              placeholder="Description"
               rows={2}
               disabled={submitting || done}
             />

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
-  orderBy, serverTimestamp, doc, updateDoc, getDoc
+  serverTimestamp, doc, updateDoc
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,7 @@ export default function GroupPhase() {
   const { sessionId } = useParams()
   const { user } = useAuth()
   const { session } = useSession()
+  const navigate = useNavigate()
   const [groupId, setGroupId] = useState(null)
   const [members, setMembers] = useState([])
   const [ideas, setIdeas] = useState([])
@@ -26,15 +27,25 @@ export default function GroupPhase() {
   const aiEnabled = session?.aiConfig?.groupAI
   const ideasCarried = pc.ideasCarriedToGroup || 3
 
-  // Get my groupId from participant doc
+  // Get my groupId and react to status changes
   useEffect(() => {
     if (!sessionId || !user) return
     const unsub = onSnapshot(
       doc(db, 'sessions', sessionId, 'participants', user.uid),
-      snap => { if (snap.exists()) setGroupId(snap.data().groupId) }
+      snap => {
+        if (!snap.exists()) return
+        const data = snap.data()
+        setGroupId(data.groupId)
+        const status = data.status
+        if (status === 'survey') {
+          navigate(`/session/${sessionId}/survey`)
+        } else if (status === 'done') {
+          navigate(`/session/${sessionId}/done`)
+        }
+      }
     )
     return unsub
-  }, [sessionId, user])
+  }, [sessionId, user, navigate])
 
   // Listen to group members
   useEffect(() => {

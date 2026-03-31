@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, where, getDocs, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import styles from './JoinSession.module.css'
@@ -21,56 +22,26 @@ export default function JoinSession() {
     try {
       const trimmedCode = code.trim().toUpperCase()
 
-      // Find session with this code
-      const q = query(
-        collection(db, 'sessions'),
-        where('code', '==', trimmedCode),
-        where('status', '!=', 'done')
-      )
-      const snap = await getDocs(q)
+      // Call the joinSession Cloud Function — it validates the code,
+      // registers the participant, and calls tryFormGroup to form a group
+      // immediately if enough participants are waiting.
+      const functions = getFunctions(undefined, 'europe-west1')
+      const joinSession = httpsCallable(functions, 'joinSession')
+      const result = await joinSession({ code: trimmedCode })
 
-      if (snap.empty) {
-        setError('Session not found. Check the code and try again.')
-        setLoading(false)
-        return
-      }
-
-      const sessionDoc = snap.docs[0]
-      const sessionId = sessionDoc.id
-      const sessionData = sessionDoc.data()
-
-      // Block if session is past waiting (already mid-game and rejoin not expected)
-      if (sessionData.status === 'done') {
-        setError('This session has already ended.')
-        setLoading(false)
-        return
-      }
-
-      // Register participant - only set initial state on first join
-      const participantRef = doc(db, 'sessions', sessionId, 'participants', user.uid)
-      const existingSnap = await getDoc(participantRef)
-      if (existingSnap.exists()) {
-        // Already registered - only update name/email, never touch progress fields
-        await setDoc(participantRef, {
-          name: user.displayName || user.email,
-          email: user.email,
-        }, { merge: true })
-      } else {
-        await setDoc(participantRef, {
-          name: user.displayName || user.email,
-          email: user.email,
-          joinedAt: serverTimestamp(),
-          status: 'waiting',
-          individualComplete: false,
-          groupId: null,
-        })
-      }
+      const { sessionId } = result.data
 
       // Navigate to the session lobby
       navigate(`/session/${sessionId}`)
     } catch (err) {
       console.error(err)
-      setError('Something went wrong. Please try again.')
+      if (err.code === 'functions/not-found') {
+        setError('Session not found. Check the code and try again.')
+      } else if (err.code === 'functions/failed-precondition') {
+        setError('This session has already ended.')
+      } else {
+        setError('Something went wrong. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

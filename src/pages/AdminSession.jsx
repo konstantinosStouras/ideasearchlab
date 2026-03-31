@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  doc, collection, onSnapshot, updateDoc, serverTimestamp
-} from 'firebase/firestore'
-import { db } from '../firebase'
+import { doc, collection, onSnapshot } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from '../firebase'
 import { getPhaseSequence } from '../utils/phaseSequence'
 import styles from './AdminSession.module.css'
 
@@ -32,22 +31,9 @@ export default function AdminSession() {
     if (!session) return
     setAdvancing(true)
     try {
-      const sequence = getPhaseSequence(session.phaseConfig)
-      const currentIndex = sequence.indexOf(session.status)
-      const nextPhase = sequence[currentIndex + 1]
-      if (!nextPhase) return
-
-      const updates = {
-        status: nextPhase,
-        phaseStartedAt: serverTimestamp(),
-      }
-
-      // When advancing to individual or group, update all waiting participants
-      if (nextPhase === 'individual') {
-        // Cloud function handles participant status - just update session
-      }
-
-      await updateDoc(doc(db, 'sessions', sessionId), updates)
+      await httpsCallable(functions, 'advancePhase')({ sessionId })
+    } catch (err) {
+      console.error('advancePhase error:', err)
     } finally {
       setAdvancing(false)
     }

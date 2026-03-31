@@ -7,13 +7,11 @@ import { useAuth } from '../context/AuthContext'
 import { useSession } from '../context/SessionContext'
 import styles from './Registration.module.css'
 
-const AGE_OPTIONS = [
-  '18-24', '25-34', '35-44', '45-54', '55-64', '65+',
-]
+// ── Option lists ────────────────────────────
 
-const GENDER_OPTIONS = [
-  'Prefer not to say', 'Male', 'Female', 'Non-binary', 'Other',
-]
+const AGE_OPTIONS = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+']
+
+const GENDER_OPTIONS = ['Prefer not to say', 'Male', 'Female', 'Non-binary', 'Other']
 
 const STUDY_LEVEL_OPTIONS = [
   'Undergraduate', 'Postgraduate (Masters)', 'Postgraduate (PhD)',
@@ -28,6 +26,51 @@ const OCCUPATION_OPTIONS = [
 const FLUENCY_OPTIONS = [
   'Native speaker', 'Fluent', 'Advanced', 'Intermediate', 'Basic',
 ]
+
+const COUNTRIES = [
+  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola',
+  'Antigua and Barbuda', 'Argentina', 'Armenia', 'Australia', 'Austria',
+  'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados',
+  'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan',
+  'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei',
+  'Bulgaria', 'Burkina Faso', 'Burundi', 'Cabo Verde', 'Cambodia',
+  'Cameroon', 'Canada', 'Central African Republic', 'Chad', 'Chile',
+  'China', 'Colombia', 'Comoros', 'Congo (DRC)', 'Congo (Republic)',
+  'Costa Rica', 'Croatia', 'Cuba', 'Cyprus', 'Czech Republic',
+  'Denmark', 'Djibouti', 'Dominica', 'Dominican Republic', 'Ecuador',
+  'Egypt', 'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia',
+  'Eswatini', 'Ethiopia', 'Fiji', 'Finland', 'France',
+  'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana',
+  'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau',
+  'Guyana', 'Haiti', 'Honduras', 'Hungary', 'Iceland',
+  'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland',
+  'Israel', 'Italy', 'Ivory Coast', 'Jamaica', 'Japan',
+  'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Kosovo',
+  'Kuwait', 'Kyrgyzstan', 'Laos', 'Latvia', 'Lebanon',
+  'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania',
+  'Luxembourg', 'Madagascar', 'Malawi', 'Malaysia', 'Maldives',
+  'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius',
+  'Mexico', 'Micronesia', 'Moldova', 'Monaco', 'Mongolia',
+  'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia',
+  'Nauru', 'Nepal', 'Netherlands', 'New Zealand', 'Nicaragua',
+  'Niger', 'Nigeria', 'North Korea', 'North Macedonia', 'Norway',
+  'Oman', 'Pakistan', 'Palau', 'Palestine', 'Panama',
+  'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland',
+  'Portugal', 'Qatar', 'Romania', 'Russia', 'Rwanda',
+  'Saint Kitts and Nevis', 'Saint Lucia', 'Saint Vincent and the Grenadines',
+  'Samoa', 'San Marino', 'Sao Tome and Principe', 'Saudi Arabia', 'Senegal',
+  'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore', 'Slovakia',
+  'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea',
+  'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname',
+  'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan',
+  'Tanzania', 'Thailand', 'Timor-Leste', 'Togo', 'Tonga',
+  'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
+  'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States',
+  'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela',
+  'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe',
+]
+
+// ── Component ───────────────────────────────
 
 export default function Registration() {
   const { sessionId } = useParams()
@@ -55,24 +98,30 @@ export default function Registration() {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
-  function isValid() {
-    return (
-      form.age &&
-      form.nationality.trim() &&
-      form.country.trim() &&
-      form.levelOfStudy &&
-      form.workExperience.trim() &&
-      form.occupation &&
-      form.englishFluency &&
-      consent1 &&
-      consent2
-    )
+  function validate() {
+    if (!form.age) return 'Please select your age range.'
+    if (!form.nationality) return 'Please select your nationality.'
+    if (!form.country) return 'Please select your country of residence.'
+    if (!form.levelOfStudy) return 'Please select your level of study.'
+
+    const exp = form.workExperience.trim()
+    if (!exp) return 'Please enter your work experience in years.'
+    const expNum = Number(exp)
+    if (isNaN(expNum) || !Number.isInteger(expNum) || expNum < 0 || expNum > 50) {
+      return 'Work experience must be a whole number between 0 and 50.'
+    }
+
+    if (!form.occupation) return 'Please select your occupation.'
+    if (!form.englishFluency) return 'Please select your English fluency level.'
+    if (!consent1 || !consent2) return 'Please accept both consent statements to continue.'
+    return null
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!isValid()) {
-      setError('Please complete all required fields and accept both consent statements.')
+    const validationError = validate()
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -80,21 +129,19 @@ export default function Registration() {
     setLoading(true)
 
     try {
-      // 1. Call joinSession Cloud Function to register participant + trigger group formation
       const functions = getFunctions(undefined, 'europe-west1')
       const joinSession = httpsCallable(functions, 'joinSession')
-      const result = await joinSession({ code: session.code })
+      await joinSession({ code: session.code })
 
-      // 2. Write demographics to the participant document
       const participantRef = doc(db, 'sessions', sessionId, 'participants', user.uid)
       await updateDoc(participantRef, {
         demographics: {
           age: form.age,
           gender: form.gender,
-          nationality: form.nationality.trim(),
-          country: form.country.trim(),
+          nationality: form.nationality,
+          country: form.country,
           levelOfStudy: form.levelOfStudy,
-          workExperience: form.workExperience.trim(),
+          workExperience: Number(form.workExperience.trim()),
           occupation: form.occupation,
           englishFluency: form.englishFluency,
         },
@@ -102,7 +149,6 @@ export default function Registration() {
         consentTimestamp: new Date().toISOString(),
       })
 
-      // 3. Navigate to the session lobby
       navigate(`/session/${sessionId}`)
     } catch (err) {
       console.error(err)
@@ -111,6 +157,8 @@ export default function Registration() {
       setLoading(false)
     }
   }
+
+  const isValid = validate() === null
 
   return (
     <div className={styles.page}>
@@ -158,26 +206,32 @@ export default function Registration() {
 
               <label className={styles.field}>
                 <span className={styles.label}>Nationality <span className={styles.req}>*</span></span>
-                <input
-                  className="input-field"
-                  type="text"
+                <select
+                  className={`input-field ${styles.select}`}
                   value={form.nationality}
                   onChange={e => updateField('nationality', e.target.value)}
-                  placeholder=""
-                />
+                >
+                  <option value="">Select...</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </label>
             </div>
 
             <div className={styles.row2}>
               <label className={styles.field}>
-                <span className={styles.label}>Country <span className={styles.req}>*</span></span>
-                <input
-                  className="input-field"
-                  type="text"
+                <span className={styles.label}>Country of residence <span className={styles.req}>*</span></span>
+                <select
+                  className={`input-field ${styles.select}`}
                   value={form.country}
                   onChange={e => updateField('country', e.target.value)}
-                  placeholder=""
-                />
+                >
+                  <option value="">Select...</option>
+                  {COUNTRIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </label>
 
               <label className={styles.field}>
@@ -200,10 +254,13 @@ export default function Registration() {
                 <span className={styles.label}>Work Experience (in years) <span className={styles.req}>*</span></span>
                 <input
                   className="input-field"
-                  type="text"
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="1"
                   value={form.workExperience}
                   onChange={e => updateField('workExperience', e.target.value)}
-                  placeholder=""
+                  placeholder="e.g. 3"
                 />
               </label>
 
@@ -266,7 +323,7 @@ export default function Registration() {
               <button
                 className={`btn-primary ${styles.submitBtn}`}
                 type="submit"
-                disabled={loading || !isValid()}
+                disabled={loading || !isValid}
               >
                 {loading ? 'Joining...' : 'Submit and Start Challenge'}
               </button>

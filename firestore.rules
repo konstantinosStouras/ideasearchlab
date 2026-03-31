@@ -53,7 +53,8 @@ service cloud.firestore {
       match /participants/{participantId} {
         // Instructor sees all; participant sees only their own doc
         allow read: if isSessionInstructor(sessionId)
-        || isSessionParticipant(sessionId);
+  || isSessionParticipant(sessionId)
+  || isOwner(participantId);
 
         // Participant can only write their own doc
         allow create: if isSignedIn() && isOwner(participantId);

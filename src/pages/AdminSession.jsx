@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { doc, collection, onSnapshot } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../firebase'
@@ -8,6 +8,7 @@ import styles from './AdminSession.module.css'
 
 export default function AdminSession() {
   const { sessionId } = useParams()
+  const navigate = useNavigate()
   const [session, setSession] = useState(null)
   const [participants, setParticipants] = useState([])
   const [advancing, setAdvancing] = useState(false)
@@ -54,7 +55,8 @@ export default function AdminSession() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <div>
+        <div className={styles.headerLeft}>
+          <button className={styles.backBtn} onClick={() => navigate('/admin')}>← Back</button>
           <span className={styles.wordmark}>Ideation Challenge</span>
           <span className={styles.slash}>/</span>
           <span className={styles.sessionCode}>{session.code}</span>
@@ -65,39 +67,52 @@ export default function AdminSession() {
       </header>
 
       <main className={styles.main}>
+
         {/* Phase timeline */}
-        <div className={styles.timeline}>
-          {sequence.map((phase, i) => (
-            <div
-              key={phase}
-              className={`${styles.timelineStep} ${i < currentIndex ? styles.done : ''} ${i === currentIndex ? styles.active : ''}`}
-            >
-              <div className={styles.timelineDot} />
-              <span className={styles.timelineLabel}>{phase}</span>
-            </div>
-          ))}
+        <div className={styles.timelineCard}>
+          <div className={styles.timeline}>
+            {sequence.map((phase, i) => (
+              <div
+                key={phase}
+                className={[
+                  styles.timelineStep,
+                  i < currentIndex ? styles.done : '',
+                  i === currentIndex ? styles.active : '',
+                ].join(' ')}
+              >
+                <div className={styles.timelineDot} />
+                <span className={styles.timelineLabel}>{phase}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className={styles.grid}>
           {/* Participant breakdown */}
           <div className="card">
-            <h2 className={styles.cardTitle}>Participants ({participants.length})</h2>
-            <div className={styles.breakdown}>
-              {Object.entries(byStatus).map(([status, count]) => (
-                <div key={status} className={styles.breakdownRow}>
-                  <span className={styles.breakdownStatus}>{status}</span>
-                  <span className={styles.breakdownCount}>{count}</span>
+            <h2 className={styles.cardTitle}>Participants <span className={styles.cardCount}>({participants.length})</span></h2>
+            {participants.length === 0 ? (
+              <p className={styles.emptyNote}>No participants have joined yet.</p>
+            ) : (
+              <>
+                <div className={styles.breakdown}>
+                  {Object.entries(byStatus).map(([status, count]) => (
+                    <div key={status} className={styles.breakdownRow}>
+                      <span className={styles.breakdownStatus}>{status}</span>
+                      <span className={styles.breakdownCount}>{count}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className={styles.participantList}>
-              {participants.map(p => (
-                <div key={p.id} className={styles.participantRow}>
-                  <span>{p.name}</span>
-                  <span className={styles.pStatus}>{p.status}</span>
+                <div className={styles.participantList}>
+                  {participants.map(p => (
+                    <div key={p.id} className={styles.participantRow}>
+                      <span>{p.name || p.anonymousLabel || p.id.slice(0, 6)}</span>
+                      <span className={styles.pStatus}>{p.status}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
 
           {/* Session config summary */}
@@ -106,9 +121,10 @@ export default function AdminSession() {
             <div className={styles.configList}>
               <ConfigRow label="Individual Phase" value={session.phaseConfig?.individualPhaseActive ? 'On' : 'Off'} />
               <ConfigRow label="Group Phase" value={session.phaseConfig?.groupPhaseActive ? 'On' : 'Off'} />
-              <ConfigRow label="Phase Order" value={session.phaseConfig?.phaseOrder || 'N/A'} />
-              <ConfigRow label="Max ideas (individual)" value={session.phaseConfig?.maxIdeasIndividual} />
-              <ConfigRow label="Ideas to group" value={session.phaseConfig?.ideasCarriedToGroup} />
+              <ConfigRow label="Phase Order" value={session.phaseConfig?.phaseOrder?.replace('_', ' ') || 'N/A'} />
+              <ConfigRow label="Group size" value={session.phaseConfig?.groupSize ?? 'N/A'} />
+              <ConfigRow label="Max ideas (individual)" value={session.phaseConfig?.maxIdeasIndividual ?? 'N/A'} />
+              <ConfigRow label="Ideas carried to group" value={session.phaseConfig?.ideasCarriedToGroup ?? 'N/A'} />
               <ConfigRow label="AI (individual)" value={session.aiConfig?.individualAI ? 'On' : 'Off'} />
               <ConfigRow label="AI (group)" value={session.aiConfig?.groupAI ? 'On' : 'Off'} />
             </div>
@@ -137,7 +153,7 @@ export default function AdminSession() {
                 onClick={advancePhase}
                 disabled={advancing || isLast}
               >
-                {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Force advance: ${nextPhase}`}
+                {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Force advance → ${nextPhase}`}
               </button>
             </div>
           </div>
@@ -153,9 +169,9 @@ export default function AdminSession() {
 
 function ConfigRow({ label, value }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
-      <span style={{ color: 'var(--muted)' }}>{label}</span>
-      <strong>{String(value)}</strong>
+    <div className={styles.configRow}>
+      <span className={styles.configLabel}>{label}</span>
+      <strong className={styles.configValue}>{String(value)}</strong>
     </div>
   )
 }

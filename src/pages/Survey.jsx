@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useSession } from '../context/SessionContext'
@@ -11,7 +11,21 @@ export default function Survey() {
   const { sessionId } = useParams()
   const { user } = useAuth()
   const { session } = useSession()
+  const navigate = useNavigate()
   const [answers, setAnswers] = useState({})
+
+  // React to instructor advancing past survey
+  useEffect(() => {
+    if (!sessionId || !user) return
+    const unsub = onSnapshot(
+      doc(db, 'sessions', sessionId, 'participants', user.uid),
+      snap => {
+        if (!snap.exists()) return
+        if (snap.data().status === 'done') navigate(`/session/${sessionId}/done`)
+      }
+    )
+    return unsub
+  }, [sessionId, user, navigate])
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 

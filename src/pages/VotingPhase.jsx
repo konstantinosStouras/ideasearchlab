@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { collection, onSnapshot, query, where, doc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../firebase'
@@ -16,69 +16,64 @@ export default function VotingPhase() {
   const { session } = useSession()
   const [groupId, setGroupId] = useState(null)
   const [ideas, setIdeas] = useState([])
+  const [memberIds, setMemberIds] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  const navigate = useNavigate()
   const pc = session?.phaseConfig || {}
 
-  // Get groupId
+  // Get groupId and react to status changes
   useEffect(() => {
     if (!sessionId || !user) return
     const unsub = onSnapshot(
       doc(db, 'sessions', sessionId, 'participants', user.uid),
-      snap => { if (snap.exists()) setGroupId(snap.data().groupId) }
+      snap => {
+        if (!snap.exists()) return
+        const data = snap.data()
+        setGroupId(data.groupId)
+        const status = data.status
+        if (status === 'survey') {
+          navigate(`/session/${sessionId}/survey`)
+        } else if (status === 'done') {
+          navigate(`/session/${sessionId}/done`)
+        }
+      }
     )
     return unsub
-  }, [sessionId, user])
+  }, [sessionId, user, navigate])
 
-  // Load all ideas for this group
+  // Load ideas for this group - members first, then ideas
   useEffect(() => {
     if (!sessionId || !groupId) return
     const unsub = onSnapshot(
-      collection(db, 'sessions', sessionId, 'ideas'),
-      snap => {
-        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        // Individual ideas from group members + group ideas
-        // We need member IDs — load via group doc or participant query
-        setIdeas(all.filter(i =>
-          i.groupId === groupId ||
-          (i.phase === 'individual') // filtered further once we have member list
-        ))
-      }
+      query(collection(db, 'sessions', sessionId, 'participants'), where('groupId', '==', groupId)),
+      snap => setMemberIds(snap.docs.map(d => d.id))
     )
     return unsub
   }, [sessionId, groupId])
 
-  // Proper idea pool: fetch group members then filter
   useEffect(() => {
-    if (!sessionId || !groupId) return
-    const pc2 = session?.phaseConfig || {}
-    const ideasCarried = pc2.ideasCarriedToGroup || 3
+    if (!sessionId || !groupId || memberIds.length === 0) return
+    const ideasCarried = session?.phaseConfig?.ideasCarriedToGroup || 3
 
-    const memberUnsub = onSnapshot(
-      query(collection(db, 'sessions', sessionId, 'participants'), where('groupId', '==', groupId)),
-      memberSnap => {
-        const memberIds = memberSnap.docs.map(d => d.id)
-        const ideaUnsub = onSnapshot(
-          collection(db, 'sessions', sessionId, 'ideas'),
-          snap => {
-            const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            const indivIdeas = memberIds.flatMap(uid => {
-              const mine = all
-                .filter(i => i.authorId === uid && i.phase === 'individual')
-                .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
-              return mine.slice(-ideasCarried)
-            })
-            const groupIdeas = all.filter(i => i.phase === 'group' && i.groupId === groupId)
-            setIdeas([...indivIdeas, ...groupIdeas])
-          }
-        )
-        return ideaUnsub
+    const unsub = onSnapshot(
+      collection(db, 'sessions', sessionId, 'ideas'),
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        const indivIdeas = memberIds.flatMap(uid => {
+          const mine = all
+            .filter(i => i.authorId === uid && i.phase === 'individual')
+            .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
+          return mine.slice(-ideasCarried)
+        })
+        const groupIdeas = all.filter(i => i.phase === 'group' && i.groupId === groupId)
+        setIdeas([...indivIdeas, ...groupIdeas])
       }
     )
-    return memberUnsub
-  }, [sessionId, groupId, session])
+    return unsub
+  }, [sessionId, groupId, memberIds, session])
 
   function toggleVote(ideaId) {
     if (submitted) return

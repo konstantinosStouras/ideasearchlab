@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
-  serverTimestamp, doc, updateDoc
+  serverTimestamp, doc
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -111,18 +111,8 @@ export default function GroupPhase() {
     }
   }
 
-  async function proceedToVoting() {
-    if (!groupId) return
-    await updateDoc(doc(db, 'sessions', sessionId, 'groups', groupId), {
-      status: 'voting'
-    })
-    // Update all group members' status to voting
-    for (const m of members) {
-      await updateDoc(doc(db, 'sessions', sessionId, 'participants', m.id), {
-        status: 'voting'
-      })
-    }
-  }
+  // Voting is advanced by the instructor via advancePhase Cloud Function.
+  // The participant status listener above will navigate automatically.
 
   const allIdeas = [...(ideas.individual || []), ...(ideas.group || [])]
 
@@ -143,11 +133,8 @@ export default function GroupPhase() {
           <PhaseTimer
             phaseStartedAt={session?.phaseStartedAt}
             durationSeconds={pc.groupPhaseDuration}
-            onExpire={proceedToVoting}
           />
-          <button className="btn-primary" onClick={proceedToVoting}>
-            Proceed to Voting
-          </button>
+          <div className={styles.waitingMsg}>Waiting for instructor to advance to voting...</div>
         </div>
       </div>
 

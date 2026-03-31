@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  collection, onSnapshot, query, where, doc,
-  updateDoc, serverTimestamp, getDocs
-} from 'firebase/firestore'
-import { db } from '../firebase'
+import { collection, onSnapshot, query, where, doc } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { useSession } from '../context/SessionContext'
 import PhaseTimer from '../components/PhaseTimer'
@@ -99,23 +97,13 @@ export default function VotingPhase() {
     if (selected.size !== MAX_VOTES || submitting || submitted) return
     setSubmitting(true)
     try {
-      // Record votes on each idea
-      for (const ideaId of selected) {
-        const ideaRef = doc(db, 'sessions', sessionId, 'ideas', ideaId)
-        const snap = await getDocs(query(collection(db, 'sessions', sessionId, 'ideas'), where('__name__', '==', ideaId)))
-        // Simple: just mark in participant doc which ideas they voted for
-      }
-
-      // Mark participant as done with voting
-      await updateDoc(doc(db, 'sessions', sessionId, 'participants', user.uid), {
-        status: 'survey',
-        votedFor: Array.from(selected),
-        votedAt: serverTimestamp(),
+      await httpsCallable(functions, 'submitVote')({
+        sessionId,
+        ideaIds: Array.from(selected),
       })
-
       setSubmitted(true)
     } catch (err) {
-      console.error(err)
+      console.error('submitVote error:', err)
     } finally {
       setSubmitting(false)
     }

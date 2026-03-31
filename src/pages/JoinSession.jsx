@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -46,19 +46,25 @@ export default function JoinSession() {
         return
       }
 
-      // Register participant in session (setDoc is idempotent - safe to re-join)
-      await setDoc(
-        doc(db, 'sessions', sessionId, 'participants', user.uid),
-        {
+      // Register participant - only set initial state on first join
+      const participantRef = doc(db, 'sessions', sessionId, 'participants', user.uid)
+      const existingSnap = await getDoc(participantRef)
+      if (existingSnap.exists()) {
+        // Already registered - only update name/email, never touch progress fields
+        await setDoc(participantRef, {
+          name: user.displayName || user.email,
+          email: user.email,
+        }, { merge: true })
+      } else {
+        await setDoc(participantRef, {
           name: user.displayName || user.email,
           email: user.email,
           joinedAt: serverTimestamp(),
           status: 'waiting',
           individualComplete: false,
           groupId: null,
-        },
-        { merge: true } // won't overwrite existing fields if already joined
-      )
+        })
+      }
 
       // Navigate to the session lobby
       navigate(`/session/${sessionId}`)

@@ -101,7 +101,9 @@ export default function IndividualPhase() {
 
       {done && (
         <div className={styles.waitingBanner}>
-          Your ideas are submitted. Waiting for 2 more participants to finish before your group forms.
+          {pc.groupSize === 1
+            ? 'Your ideas are submitted. Proceeding to the next phase...'
+            : `Your ideas are submitted. Waiting for others to finish before your group forms.`}
         </div>
       )}
 

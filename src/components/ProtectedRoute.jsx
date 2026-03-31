@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+const ADMIN_EMAIL = 'admin@admin.com'
+
 // Blocks unauthenticated users
 export function RequireAuth({ children }) {
   const { user } = useAuth()
@@ -17,10 +19,11 @@ export function RequireGuest({ children }) {
   return children
 }
 
-// Placeholder for instructor-only routes (extend later with Firestore role check)
+// Only allows admin@admin.com
 export function RequireInstructor({ children }) {
   const { user } = useAuth()
   if (user === undefined) return null
   if (user === null) return <Navigate to="/login" replace />
+  if (user.email !== ADMIN_EMAIL) return <Navigate to="/join" replace />
   return children
 }

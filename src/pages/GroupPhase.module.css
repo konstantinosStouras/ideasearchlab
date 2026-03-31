@@ -17,14 +17,11 @@
   gap: 12px;
   flex-shrink: 0;
 }
-
 .topLeft { display: flex; flex-direction: column; gap: 8px; }
-
 .phaseTitle { font-family: var(--font-display); font-size: 28px; }
-
 .memberPills { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.pill {
+.memberChip {
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 20px;
@@ -32,14 +29,22 @@
   color: var(--muted);
   border: 1px solid var(--border);
 }
-
-.pillMe {
+.memberChipMe {
   background: rgba(200,86,42,0.08);
   color: var(--accent);
   border-color: rgba(200,86,42,0.2);
 }
 
 .topRight { display: flex; align-items: center; gap: 14px; }
+
+.waitingMsg {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 14px;
+  background: var(--paper);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
 
 /* Two column layout */
 .columns {
@@ -49,7 +54,6 @@
   flex: 1;
   min-height: 0;
 }
-
 .column {
   display: flex;
   flex-direction: column;
@@ -57,22 +61,30 @@
   overflow-y: auto;
   min-height: 0;
 }
-
 .columnTitle { font-family: var(--font-display); font-size: 18px; }
 .columnSub { font-size: 12px; color: var(--muted); margin-top: -6px; }
 
 .ideaList { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 
-.ideaCard {
+/* ═══════════════════════════════════════════
+   Idea pill cards
+   ═══════════════════════════════════════════ */
+.ideaPill {
   background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  box-shadow: var(--shadow-sm);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 14px 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.15s;
   animation: fadeIn 0.2s ease;
+}
+.ideaPill:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.ideaPillGroup {
+  border-color: rgba(200,86,42,0.2);
+  background: rgba(200,86,42,0.015);
 }
 
 @keyframes fadeIn {
@@ -80,56 +92,126 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.groupCard { border-color: rgba(200,86,42,0.2); background: rgba(200,86,42,0.02); }
-
-.ideaHeader { display: flex; align-items: center; gap: 6px; }
-
-.ideaAuthor {
+/* Meta row (author label) */
+.pillTop {
+  margin-bottom: 6px;
+}
+.pillMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pillAuthor {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
-
 .youTag {
   font-size: 10px;
   background: rgba(200,86,42,0.1);
   color: var(--accent);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 10px;
 }
 
-.ideaText { font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+/* Title */
+.pillTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.4;
+}
 
-.addCard {
+/* Separator line */
+.pillDivider {
+  height: 1px;
+  margin: 8px 0;
+  background: linear-gradient(
+    90deg,
+    var(--border) 0%,
+    rgba(200,86,42,0.12) 50%,
+    var(--border) 100%
+  );
+}
+
+.ideaPillGroup .pillDivider {
+  background: linear-gradient(
+    90deg,
+    rgba(200,86,42,0.08) 0%,
+    rgba(200,86,42,0.2) 50%,
+    rgba(200,86,42,0.08) 100%
+  );
+}
+
+/* Description */
+.pillDesc {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* ─── Add idea form (pill style) ─────────── */
+.addPill {
   background: var(--white);
   border: 1.5px dashed var(--border);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
+  border-radius: 20px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   transition: border-color 0.15s;
 }
-.addCard:focus-within { border-color: var(--accent); border-style: solid; }
-
-.ideaInput {
-  border: none; outline: none; background: transparent;
-  font-family: var(--font-body); font-size: 14px;
-  color: var(--ink); resize: none; width: 100%; line-height: 1.5;
+.addPill:focus-within {
+  border-color: var(--accent);
+  border-style: solid;
 }
-.ideaInput::placeholder { color: var(--muted); }
+
+.addTitleInput {
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 0;
+  background: transparent;
+}
+.addTitleInput::placeholder { color: var(--muted); font-weight: 400; }
+
+.addDivider {
+  height: 1px;
+  margin: 10px 0;
+  background: var(--border);
+}
+
+.addDescInput {
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+  background: transparent;
+  resize: none;
+  line-height: 1.5;
+}
+.addDescInput::placeholder { color: var(--muted); }
+
+.addFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.addBtn {
+  padding: 7px 18px;
+  font-size: 13px;
+  border-radius: 14px;
+}
 
 @media (max-width: 700px) {
   .columns { grid-template-columns: 1fr; }
-}
-
-.waitingMsg {
-  font-size: 13px;
-  color: var(--muted);
-  padding: 8px 14px;
-  background: var(--paper);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  .ideaPill { border-radius: 16px; padding: 12px 16px; }
+  .addPill { border-radius: 16px; padding: 12px 16px; }
 }

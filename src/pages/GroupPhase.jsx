@@ -21,12 +21,12 @@ export default function GroupPhase() {
   const [memberLabels, setMemberLabels] = useState({})
   const [members, setMembers] = useState([])
   const [ideas, setIdeas] = useState([])
-  const [newIdea, setNewIdea] = useState('')
+  const [newTitle, setNewTitle] = useState('')
+  const [newDesc, setNewDesc] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const pc = session?.phaseConfig || {}
   const aiEnabled = session?.aiConfig?.groupAI
-  const ideasCarried = pc.ideasCarriedToGroup || 3
 
   // Get groupId, anonymous labels, and react to status changes
   useEffect(() => {
@@ -38,7 +38,8 @@ export default function GroupPhase() {
         const data = snap.data()
         setGroupId(data.groupId)
         const status = data.status
-        if (status === 'survey') navigate(`/session/${sessionId}/survey`)
+        if (status === 'voting') navigate(`/session/${sessionId}/voting`)
+        else if (status === 'survey') navigate(`/session/${sessionId}/survey`)
         else if (status === 'done') navigate(`/session/${sessionId}/done`)
       }
     )
@@ -70,7 +71,7 @@ export default function GroupPhase() {
     return unsub
   }, [sessionId, groupId])
 
-  // Listen to all ideas for this group (individual carried + new group ideas)
+  // Listen to all ideas for this group
   useEffect(() => {
     if (!sessionId || !groupId || members.length === 0) return
     const memberIds = members.map(m => m.id)
@@ -80,12 +81,9 @@ export default function GroupPhase() {
       snap => {
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-        // Individual ideas: from group members, sorted by createdAt, take latest N per person
+        // Individual ideas: only selected (top) ideas from each member
         const individualIdeas = memberIds.flatMap(uid => {
-          const mine = all
-            .filter(i => i.authorId === uid && i.phase === 'individual')
-            .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
-          return mine.slice(-ideasCarried)
+          return all.filter(i => i.authorId === uid && i.phase === 'individual' && i.selected)
         })
 
         // Group ideas: created during group phase for this group
@@ -95,17 +93,20 @@ export default function GroupPhase() {
       }
     )
     return unsub
-  }, [sessionId, groupId, members, ideasCarried])
+  }, [sessionId, groupId, members])
 
   async function submitGroupIdea(e) {
     e.preventDefault()
-    const text = newIdea.trim()
-    if (!text || submitting || !groupId) return
+    const t = newTitle.trim()
+    const d = newDesc.trim()
+    if (!t || !d || submitting || !groupId) return
 
     setSubmitting(true)
     try {
       await addDoc(collection(db, 'sessions', sessionId, 'ideas'), {
-        text,
+        title: t,
+        description: d,
+        text: `${t}: ${d}`,
         authorId: user.uid,
         authorName: user.displayName || user.email,
         phase: 'group',
@@ -113,7 +114,8 @@ export default function GroupPhase() {
         votes: 0,
         createdAt: serverTimestamp(),
       })
-      setNewIdea('')
+      setNewTitle('')
+      setNewDesc('')
     } catch (err) {
       console.error(err)
     } finally {
@@ -121,7 +123,28 @@ export default function GroupPhase() {
     }
   }
 
-  // Voting is advanced by the instructor. Status listener above handles redirect.
+  /** Renders one idea pill card */
+  function IdeaPill({ idea, variant }) {
+    const label = memberLabels[idea.authorId] || idea.anonymousLabel || '?'
+    const isMe = idea.authorId === user.uid
+    return (
+      <div className={`${styles.ideaPill} ${variant === 'group' ? styles.ideaPillGroup : ''}`}>
+        <div className={styles.pillTop}>
+          <div className={styles.pillMeta}>
+            <span className={styles.pillAuthor}>{label}</span>
+            {isMe && <span className={styles.youTag}>you</span>}
+          </div>
+        </div>
+        <h4 className={styles.pillTitle}>{idea.title || idea.text}</h4>
+        {idea.description && (
+          <>
+            <div className={styles.pillDivider} />
+            <p className={styles.pillDesc}>{idea.description}</p>
+          </>
+        )}
+      </div>
+    )
+  }
 
   const mainPanel = (
     <div className={styles.main}>
@@ -130,7 +153,7 @@ export default function GroupPhase() {
           <h1 className={styles.phaseTitle}>Group Phase</h1>
           <div className={styles.memberPills}>
             {members.map(m => (
-              <span key={m.id} className={`${styles.pill} ${m.id === user.uid ? styles.pillMe : ''}`}>
+              <span key={m.id} className={`${styles.memberChip} ${m.id === user.uid ? styles.memberChipMe : ''}`}>
                 {memberLabels[m.id] || m.anonymousLabel || 'Member'}
                 {m.id === user.uid && ' (you)'}
               </span>
@@ -150,20 +173,11 @@ export default function GroupPhase() {
         {/* Individual ideas column */}
         <div className={styles.column}>
           <h2 className={styles.columnTitle}>Individual Ideas</h2>
-          <p className={styles.columnSub}>Top {ideasCarried} from each member</p>
+          <p className={styles.columnSub}>Selected ideas from each member</p>
           <div className={styles.ideaList}>
-            {(ideas.individual || []).map((idea, i) => {
-              const author = members.find(m => m.id === idea.authorId)
-              return (
-                <div key={idea.id} className={styles.ideaCard}>
-                  <div className={styles.ideaHeader}>
-                    <span className={styles.ideaAuthor}>{memberLabels[idea.authorId] || '?'}</span>
-                    {idea.authorId === user.uid && <span className={styles.youTag}>you</span>}
-                  </div>
-                  <p className={styles.ideaText}>{idea.text}</p>
-                </div>
-              )
-            })}
+            {(ideas.individual || []).map(idea => (
+              <IdeaPill key={idea.id} idea={idea} variant="individual" />
+            ))}
           </div>
         </div>
 
@@ -173,32 +187,36 @@ export default function GroupPhase() {
           <p className={styles.columnSub}>Generated together in this phase</p>
           <div className={styles.ideaList}>
             {(ideas.group || []).map(idea => (
-              <div key={idea.id} className={`${styles.ideaCard} ${styles.groupCard}`}>
-                <div className={styles.ideaHeader}>
-                  <span className={styles.ideaAuthor}>{memberLabels[idea.authorId] || '?'}</span>
-                  {idea.authorId === user.uid && <span className={styles.youTag}>you</span>}
-                </div>
-                <p className={styles.ideaText}>{idea.text}</p>
-              </div>
+              <IdeaPill key={idea.id} idea={idea} variant="group" />
             ))}
 
-            <form onSubmit={submitGroupIdea} className={styles.addCard}>
+            <form onSubmit={submitGroupIdea} className={styles.addPill}>
+              <input
+                className={styles.addTitleInput}
+                type="text"
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                placeholder="Product name"
+                disabled={submitting}
+              />
+              <div className={styles.addDivider} />
               <textarea
-                className={styles.ideaInput}
-                value={newIdea}
-                onChange={e => setNewIdea(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submitGroupIdea(e) }}
-                placeholder="Add a new group idea..."
+                className={styles.addDescInput}
+                value={newDesc}
+                onChange={e => setNewDesc(e.target.value)}
+                placeholder="One line description"
                 rows={2}
                 disabled={submitting}
               />
-              <button
-                className="btn-primary"
-                type="submit"
-                disabled={submitting || !newIdea.trim()}
-              >
-                {submitting ? 'Adding...' : 'Add'}
-              </button>
+              <div className={styles.addFooter}>
+                <button
+                  className={`btn-primary ${styles.addBtn}`}
+                  type="submit"
+                  disabled={submitting || !newTitle.trim() || !newDesc.trim()}
+                >
+                  {submitting ? 'Adding...' : 'Add'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

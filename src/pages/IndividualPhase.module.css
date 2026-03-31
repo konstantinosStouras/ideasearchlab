@@ -1,15 +1,112 @@
-.page {
-  height: 100vh;
+/* ═══════════════════════════════════════════
+   Instructions page
+   ═══════════════════════════════════════════ */
+.instrPage {
+  min-height: 100vh;
   display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+.instrHeader {
+  display: flex;
+  align-items: center;
+  padding: 20px 40px;
+  border-bottom: 1px solid var(--border);
+  background: var(--white);
+}
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--ink);
+}
+.instrContainer {
+  flex: 1;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+.instrPageTitle {
+  font-family: var(--font-display);
+  font-size: 30px;
+  color: var(--ink);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.instrPageSub {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 28px;
+}
+.instrCard {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
+.instrCardTitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--ink);
+  padding: 20px 32px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--border);
+}
+.instrBody { padding: 28px 32px; }
+.instrBody p {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+  margin-bottom: 14px;
+}
+.instrBody p:last-child { margin-bottom: 0; }
+.taskSection { margin-top: 24px; }
+.taskTitle {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.taskList { display: flex; flex-direction: column; gap: 8px; }
+.taskItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--ink);
+}
+.taskItem::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.startBtn {
+  margin: 24px 32px 28px;
+  padding: 12px 40px;
+  font-size: 15px;
+}
+
+/* ═══════════════════════════════════════════
+   Workspace
+   ═══════════════════════════════════════════ */
+.page { height: 100vh; display: flex; overflow: hidden; }
 
 .main {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 28px 32px;
-  gap: 20px;
+  padding: 24px 28px;
+  gap: 14px;
   overflow-y: auto;
 }
 
@@ -21,35 +118,11 @@
   gap: 12px;
   flex-shrink: 0;
 }
-
-.topLeft {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-}
-
-.phaseTitle {
-  font-family: var(--font-display);
-  font-size: 28px;
-  color: var(--ink);
-}
-
-.ideaCount {
-  font-size: 13px;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
-
-.topRight {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.doneBtn {
-  padding: 9px 20px;
-  font-size: 13px;
-}
+.topLeft { display: flex; align-items: baseline; gap: 14px; }
+.phaseTitle { font-family: var(--font-display); font-size: 28px; color: var(--ink); }
+.ideaCount { font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+.topRight { display: flex; align-items: center; gap: 16px; }
+.doneBtn { padding: 9px 20px; font-size: 13px; }
 
 .waitingBanner {
   background: #e8f5e9;
@@ -61,24 +134,90 @@
   flex-shrink: 0;
 }
 
-/* Idea list */
-.ideaList {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-}
-
-.ideaCard {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
+/* ─── Task brief ─────────────────────────── */
+.brief {
   background: var(--white);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
   box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.briefToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 18px;
+  background: var(--paper);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.briefToggle:hover { background: rgba(0,0,0,0.03); }
+.briefChevron { font-size: 10px; color: var(--muted); }
+.briefContent { padding: 20px 22px; }
+.briefContent p { font-size: 13.5px; line-height: 1.7; color: var(--ink); margin-bottom: 12px; }
+.briefContent ul { padding-left: 20px; margin-bottom: 14px; }
+.briefContent li { font-size: 13.5px; line-height: 1.7; color: var(--ink); margin-bottom: 4px; }
+.exampleBox {
+  display: flex; gap: 20px; align-items: flex-start;
+  background: var(--paper); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+}
+.exampleImgWrap { flex-shrink: 0; width: 140px; }
+.exampleImg { width: 100%; height: auto; border-radius: var(--radius); object-fit: cover; }
+.exampleText { font-size: 13.5px; line-height: 1.7; color: var(--ink); margin-bottom: 0 !important; }
+.aiNote {
+  background: rgba(200,86,42,0.04);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 13px !important;
+}
+
+/* ─── Selection bar ──────────────────────── */
+.selectionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(200,86,42,0.04);
+  border: 1px solid rgba(200,86,42,0.15);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.selectionLabel { font-size: 13px; color: var(--ink); }
+.selectionHint { font-size: 12px; color: var(--muted); }
+
+/* ═══════════════════════════════════════════
+   Idea pill cards (shared design)
+   ═══════════════════════════════════════════ */
+.ideaList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.ideaPill {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 16px 22px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.2s;
   animation: slideIn 0.2s ease;
+  user-select: none;
+  cursor: default;
+}
+
+.ideaPill:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 @keyframes slideIn {
@@ -86,51 +225,184 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.ideaNum {
-  font-family: var(--font-display);
-  font-size: 22px;
-  color: var(--accent);
-  line-height: 1;
-  flex-shrink: 0;
-  width: 28px;
+/* Selected state */
+.ideaPillSelected {
+  border-color: var(--accent);
+  background: rgba(200,86,42,0.025);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgba(200,86,42,0.1);
+}
+.ideaPillSelected:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 3px 12px rgba(200,86,42,0.14);
 }
 
-.ideaText {
+/* Top row: title + actions */
+.pillTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pillTitle {
   font-size: 14.5px;
-  line-height: 1.6;
+  font-weight: 700;
   color: var(--ink);
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
 }
 
-/* Add idea form */
-.addCard {
-  background: var(--white);
-  border: 1.5px dashed var(--border);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
+.pillActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Separator line */
+.pillDivider {
+  height: 1px;
+  margin: 10px 0;
+  background: linear-gradient(
+    90deg,
+    var(--border) 0%,
+    rgba(200,86,42,0.12) 50%,
+    var(--border) 100%
+  );
+}
+
+.ideaPillSelected .pillDivider {
+  background: linear-gradient(
+    90deg,
+    rgba(200,86,42,0.1) 0%,
+    rgba(200,86,42,0.25) 50%,
+    rgba(200,86,42,0.1) 100%
+  );
+}
+
+/* Description */
+.pillDesc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* Selected badge */
+.selectedBadge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: rgba(200,86,42,0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Edit pencil button */
+.editBtn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+}
+.ideaPill:hover .editBtn { opacity: 1; }
+.editBtn:hover { color: var(--accent); background: rgba(200,86,42,0.08); }
+
+/* ─── Edit mode ──────────────────────────── */
+.ideaPillEditing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgba(200,86,42,0.1);
+}
+
+.editFields {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: border-color 0.15s;
 }
 
-.addCard:focus-within {
+.editTitleInput,
+.editDescInput {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: var(--font-body);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.editTitleInput { font-size: 14px; font-weight: 600; }
+.editDescInput { font-size: 13px; resize: none; }
+.editTitleInput:focus,
+.editDescInput:focus { border-color: var(--accent); }
+
+.editActions { display: flex; gap: 8px; }
+.editSaveBtn { padding: 6px 16px; font-size: 12px; border-radius: 10px; }
+.editCancelBtn { padding: 6px 12px; font-size: 12px; }
+
+/* ─── Add idea form (pill style) ─────────── */
+.addPill {
+  background: var(--white);
+  border: 1.5px dashed var(--border);
+  border-radius: 20px;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: border-color 0.15s;
+}
+.addPill:focus-within {
   border-color: var(--accent);
   border-style: solid;
 }
 
-.ideaInput {
-  width: 100%;
+.addTitleInput {
   border: none;
   outline: none;
   font-family: var(--font-body);
-  font-size: 14.5px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--ink);
-  resize: none;
+  padding: 0;
   background: transparent;
-  line-height: 1.6;
+}
+.addTitleInput::placeholder { color: var(--muted); font-weight: 400; }
+
+.addDivider {
+  height: 1px;
+  margin: 10px 0;
+  background: var(--border);
 }
 
-.ideaInput::placeholder { color: var(--muted); }
+.addDescInput {
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+  background: transparent;
+  resize: none;
+  line-height: 1.6;
+}
+.addDescInput::placeholder { color: var(--muted); }
+
+.addFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.addCount { font-size: 12px; color: var(--muted); }
+.addBtn { padding: 8px 20px; font-size: 13px; border-radius: 14px; }
 
 .maxReached {
   text-align: center;
@@ -138,6 +410,19 @@
   font-size: 13.5px;
   color: var(--muted);
   background: var(--paper);
-  border-radius: var(--radius);
+  border-radius: 16px;
   border: 1px solid var(--border);
+}
+
+/* ─── Responsive ─────────────────────────── */
+@media (max-width: 600px) {
+  .instrContainer { padding: 24px 12px 60px; }
+  .instrBody { padding: 20px 16px; }
+  .startBtn { margin: 20px 16px 24px; }
+  .main { padding: 16px; }
+  .selectionBar { flex-direction: column; gap: 4px; align-items: flex-start; }
+  .exampleBox { flex-direction: column; }
+  .exampleImgWrap { width: 100%; max-width: 200px; }
+  .ideaPill { border-radius: 16px; padding: 14px 16px; }
+  .addPill { border-radius: 16px; padding: 14px 16px; }
 }

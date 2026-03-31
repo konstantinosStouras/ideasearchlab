@@ -104,8 +104,21 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
       if (p.status === 'waiting') newStatus = 'individual'
     }
 
-    if (nextPhase === 'group' && session.phaseConfig?.phaseOrder === 'group_first') {
-      if (p.status === 'waiting') newStatus = 'group'
+    if (nextPhase === 'group') {
+      if (session.phaseConfig?.phaseOrder === 'group_first') {
+        // group_first: move waiting participants into group
+        if (p.status === 'waiting') newStatus = 'group'
+      } else {
+        // individual_first: move anyone not yet in group
+        if (['waiting', 'individual', 'waiting_for_group'].includes(p.status)) {
+          newStatus = 'group'
+        }
+      }
+    }
+
+    if (nextPhase === 'voting') {
+      // Move all active group participants to voting
+      if (p.status === 'group') newStatus = 'voting'
     }
 
     if (nextPhase === 'survey') {

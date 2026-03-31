@@ -16,8 +16,8 @@ exports.submitVote = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
 
   const { sessionId, ideaIds } = data
-  if (!sessionId || !Array.isArray(ideaIds) || ideaIds.length !== 3) {
-    throw new functions.https.HttpsError('invalid-argument', 'Must provide exactly 3 idea IDs.')
+  if (!sessionId || !Array.isArray(ideaIds) || ideaIds.length < 1) {
+    throw new functions.https.HttpsError('invalid-argument', 'Must provide at least 1 idea ID.')
   }
 
   const uid = context.auth.uid
@@ -52,8 +52,6 @@ exports.submitVote = functions.https.onCall(async (data, context) => {
 
   // Check if all group members have voted
   const groupRef = sessionRef.collection('groups').doc(groupId)
-  const groupSnap = await groupRef.get()
-  const group = groupSnap.data()
 
   const membersSnap = await sessionRef.collection('participants')
     .where('groupId', '==', groupId)

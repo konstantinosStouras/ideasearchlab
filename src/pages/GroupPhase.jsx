@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   collection, addDoc, onSnapshot, query, where,
-  orderBy, serverTimestamp, doc, updateDoc, deleteDoc, writeBatch
+  serverTimestamp, doc
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
@@ -10,55 +10,26 @@ import { useSession } from '../context/SessionContext'
 import SplitLayout from '../components/SplitLayout'
 import AIChat from '../components/AIChat'
 import PhaseTimer from '../components/PhaseTimer'
-import styles from './IndividualPhase.module.css'
+import styles from './GroupPhase.module.css'
 
-export default function IndividualPhase() {
+export default function GroupPhase() {
   const { sessionId } = useParams()
-  const navigate = useNavigate()
   const { user } = useAuth()
   const { session } = useSession()
-
-  const [ideas, setIdeas] = useState([])
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [done, setDone] = useState(false)
-  const [groupMembers, setGroupMembers] = useState([])
+  const navigate = useNavigate()
   const [groupId, setGroupId] = useState(null)
-  const [started, setStarted] = useState(false)
-  const [briefOpen, setBriefOpen] = useState(true)
-  const [selectedIds, setSelectedIds] = useState(new Set())
-  const [editingId, setEditingId] = useState(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editDesc, setEditDesc] = useState('')
+  const [memberLabels, setMemberLabels] = useState({})
+  const [members, setMembers] = useState([])
+  const [ideas, setIdeas] = useState([])
+  const [newTitle, setNewTitle] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const pc = session?.phaseConfig || {}
-  const maxIdeas = pc.maxIdeasIndividual || 5
-  const aiEnabled = session?.aiConfig?.individualAI
-  const durationMinutes = pc.individualPhaseDuration
-    ? Math.round(pc.individualPhaseDuration / 60)
-    : 10
+  const aiEnabled = session?.aiConfig?.groupAI
   const ideasCarried = pc.ideasCarriedToGroup || 3
-  const groupPhaseActive = pc.groupPhaseActive !== false
 
-  useEffect(() => {
-    if (!sessionId || !user) return
-    const q = query(
-      collection(db, 'sessions', sessionId, 'ideas'),
-      where('authorId', '==', user.uid),
-      where('phase', '==', 'individual'),
-      orderBy('createdAt', 'asc')
-    )
-    const unsub = onSnapshot(q, snap => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      setIdeas(list)
-      const sel = new Set()
-      list.forEach(idea => { if (idea.selected) sel.add(idea.id) })
-      setSelectedIds(prev => prev.size === 0 && sel.size > 0 ? sel : prev)
-    })
-    return unsub
-  }, [sessionId, user])
-
+  // Get groupId, anonymous labels, and react to status changes
   useEffect(() => {
     if (!sessionId || !user) return
     const unsub = onSnapshot(
@@ -68,8 +39,7 @@ export default function IndividualPhase() {
         const data = snap.data()
         setGroupId(data.groupId)
         const status = data.status
-        if (status === 'group') navigate(`/session/${sessionId}/group`)
-        else if (status === 'voting') navigate(`/session/${sessionId}/voting`)
+        if (status === 'voting') navigate(`/session/${sessionId}/voting`)
         else if (status === 'survey') navigate(`/session/${sessionId}/survey`)
         else if (status === 'done') navigate(`/session/${sessionId}/done`)
       }
@@ -77,23 +47,68 @@ export default function IndividualPhase() {
     return unsub
   }, [sessionId, user, navigate])
 
+  // Load member labels from group document
   useEffect(() => {
     if (!sessionId || !groupId) return
     const unsub = onSnapshot(
-      query(
-        collection(db, 'sessions', sessionId, 'participants'),
-        where('groupId', '==', groupId)
-      ),
-      snap => setGroupMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      doc(db, 'sessions', sessionId, 'groups', groupId),
+      snap => {
+        if (snap.exists()) setMemberLabels(snap.data().memberLabels || {})
+      }
     )
     return unsub
   }, [sessionId, groupId])
 
-  async function submitIdea(e) {
+  // Listen to group members
+  useEffect(() => {
+    if (!sessionId || !groupId) return
+    const q = query(
+      collection(db, 'sessions', sessionId, 'participants'),
+      where('groupId', '==', groupId)
+    )
+    const unsub = onSnapshot(q, snap => {
+      setMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+    return unsub
+  }, [sessionId, groupId])
+
+  // Listen to all ideas for this group
+  useEffect(() => {
+    if (!sessionId || !groupId || members.length === 0) return
+    const memberIds = members.map(m => m.id)
+
+    const unsub = onSnapshot(
+      collection(db, 'sessions', sessionId, 'ideas'),
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+        // Individual ideas: prefer selected ideas, fall back to latest N
+        const individualIdeas = memberIds.flatMap(uid => {
+          const mine = all.filter(i => i.authorId === uid && i.phase === 'individual')
+          const selected = mine.filter(i => i.selected)
+          if (selected.length > 0) return selected
+          // Fallback: take latest N if selection flags weren't persisted
+          const sorted = [...mine].sort(
+            (a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)
+          )
+          return sorted.slice(-ideasCarried)
+        })
+
+        // Group ideas: created during group phase for this group
+        const groupIdeas = all.filter(i => i.phase === 'group' && i.groupId === groupId)
+
+        setIdeas({ individual: individualIdeas, group: groupIdeas })
+      }
+    )
+    return unsub
+  }, [sessionId, groupId, members])
+
+  async function submitGroupIdea(e) {
     e.preventDefault()
-    const t = title.trim()
-    const d = description.trim()
-    if (!t || !d || submitting || ideas.length >= maxIdeas) return
+    const t = newTitle.trim()
+    const d = newDesc.trim()
+    if (!t || !d || submitting || !groupId) return
+
     setSubmitting(true)
     try {
       await addDoc(collection(db, 'sessions', sessionId, 'ideas'), {
@@ -102,14 +117,13 @@ export default function IndividualPhase() {
         text: `${t}: ${d}`,
         authorId: user.uid,
         authorName: user.displayName || user.email,
-        phase: 'individual',
-        groupId: null,
+        phase: 'group',
+        groupId,
         votes: 0,
-        selected: false,
         createdAt: serverTimestamp(),
       })
-      setTitle('')
-      setDescription('')
+      setNewTitle('')
+      setNewDesc('')
     } catch (err) {
       console.error(err)
     } finally {
@@ -117,380 +131,103 @@ export default function IndividualPhase() {
     }
   }
 
-  function toggleSelect(ideaId) {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(ideaId)) {
-        next.delete(ideaId)
-      } else {
-        if (next.size >= ideasCarried) return prev
-        next.add(ideaId)
-      }
-      return next
-    })
-  }
-
-  function startEdit(idea) {
-    setEditingId(idea.id)
-    setEditTitle(idea.title || '')
-    setEditDesc(idea.description || '')
-  }
-
-  async function saveEdit(ideaId) {
-    const t = editTitle.trim()
-    const d = editDesc.trim()
-    if (!t || !d) return
-    try {
-      await updateDoc(doc(db, 'sessions', sessionId, 'ideas', ideaId), {
-        title: t,
-        description: d,
-        text: `${t}: ${d}`,
-      })
-    } catch (err) {
-      console.error(err)
-    }
-    setEditingId(null)
-  }
-
-  function cancelEdit() { setEditingId(null) }
-
-  async function deleteIdea(ideaId) {
-    try {
-      await deleteDoc(doc(db, 'sessions', sessionId, 'ideas', ideaId))
-      setSelectedIds(prev => {
-        const next = new Set(prev)
-        next.delete(ideaId)
-        return next
-      })
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  async function markDone() {
-    if (done) return
-    setDone(true)
-    try {
-      // 1. Mark participant as done (critical, should always succeed)
-      await updateDoc(
-        doc(db, 'sessions', sessionId, 'participants', user.uid),
-        { individualComplete: true, status: 'waiting_for_group' }
-      )
-
-      // 2. Try to mark selected ideas in Firestore (non-critical)
-      //    Requires update rules on ideas subcollection.
-      try {
-        const batch = writeBatch(db)
-        ideas.forEach(idea => {
-          const ref = doc(db, 'sessions', sessionId, 'ideas', idea.id)
-          batch.update(ref, { selected: selectedIds.has(idea.id) })
-        })
-        await batch.commit()
-      } catch (ideaErr) {
-        console.warn('Could not update idea selection flags:', ideaErr.message)
-      }
-    } catch (err) {
-      console.error('Failed to submit:', err)
-      setDone(false)
-    }
-  }
-
-  // ─── Instructions view ───
-  if (!started) {
+  /** Renders one idea pill card */
+  function IdeaPill({ idea, variant }) {
+    const label = memberLabels[idea.authorId] || idea.anonymousLabel || '?'
+    const isMe = idea.authorId === user.uid
     return (
-      <div className={styles.instrPage}>
-        <header className={styles.instrHeader}>
-          <span className={styles.wordmark}>Ideation Challenge</span>
-        </header>
-        <div className={styles.instrContainer}>
-          <h1 className={styles.instrPageTitle}>Individual Ideation Phase</h1>
-          <p className={styles.instrPageSub}>
-            Work independently to generate ideas for the health &amp; wellness market
-          </p>
-          <div className={styles.instrCard}>
-            <h2 className={styles.instrCardTitle}>Instructions</h2>
-            <div className={styles.instrBody}>
-              <p>
-                Welcome to the <strong>Individual Phase</strong> of the challenge.
-              </p>
-              <p>
-                In this part, you'll work <strong>completely on your own</strong> to
-                generate ideas for new products in the{' '}
-                <strong>health and wellness market</strong>. Please{' '}
-                <strong>do not communicate or collaborate</strong> with others during
-                this phase.
-              </p>
-              <p>
-                Focus on creating as many ideas as you can, big or small, practical or
-                experimental. Each idea should aim to offer value, improvement, or
-                innovation in health and wellness.
-              </p>
-              <p>
-                You'll have a limited amount of time to complete this phase, so work
-                efficiently and record your ideas clearly. There is a timer at the top.
-                You have <strong>{durationMinutes} minutes</strong> to complete this
-                phase. When the timer ends, you'll move on to the next stage.
-              </p>
-              {groupPhaseActive && (
-                <p>
-                  Try to write your ideas within {durationMinutes} minutes or you will
-                  be at a disadvantage when you go to the group phase.
-                </p>
-              )}
-              <div className={styles.taskSection}>
-                <h3 className={styles.taskTitle}>Your task</h3>
-                <div className={styles.taskList}>
-                  <div className={styles.taskItem}>Think independently</div>
-                  <div className={styles.taskItem}>Develop original product ideas</div>
-                  <div className={styles.taskItem}>Describe each idea briefly and clearly</div>
-                </div>
-              </div>
-            </div>
-            <button className={`btn-primary ${styles.startBtn}`} onClick={() => setStarted(true)}>
-              Start
-            </button>
+      <div className={`${styles.ideaPill} ${variant === 'group' ? styles.ideaPillGroup : ''}`}>
+        <div className={styles.pillTop}>
+          <div className={styles.pillMeta}>
+            <span className={styles.pillAuthor}>{label}</span>
+            {isMe && <span className={styles.youTag}>you</span>}
           </div>
         </div>
+        <h4 className={styles.pillTitle}>{idea.title || idea.text}</h4>
+        {idea.description && (
+          <>
+            <div className={styles.pillDivider} />
+            <p className={styles.pillDesc}>{idea.description}</p>
+          </>
+        )}
       </div>
     )
   }
-
-  // ─── Workspace view ───
-  const atMax = ideas.length >= maxIdeas
-  const hasSelection = selectedIds.size > 0
-  const canFinish = ideas.length > 0 && hasSelection && !done
 
   const mainPanel = (
     <div className={styles.main}>
       <div className={styles.topBar}>
         <div className={styles.topLeft}>
-          <h1 className={styles.phaseTitle}>Individual Phase</h1>
-          <span className={styles.ideaCount}>{ideas.length} / {maxIdeas} ideas</span>
+          <h1 className={styles.phaseTitle}>Group Phase</h1>
+          <div className={styles.memberPills}>
+            {members.map(m => (
+              <span key={m.id} className={`${styles.memberChip} ${m.id === user.uid ? styles.memberChipMe : ''}`}>
+                {memberLabels[m.id] || m.anonymousLabel || 'Member'}
+                {m.id === user.uid && ' (you)'}
+              </span>
+            ))}
+          </div>
         </div>
         <div className={styles.topRight}>
           <PhaseTimer
             phaseStartedAt={session?.phaseStartedAt}
-            durationSeconds={pc.individualPhaseDuration}
-            onExpire={canFinish ? markDone : undefined}
+            durationSeconds={pc.groupPhaseDuration}
           />
-          <button className={`btn-primary ${styles.doneBtn}`} onClick={markDone} disabled={!canFinish}>
-            {done ? 'Waiting for group...' : 'Finish & Submit'}
-          </button>
+          <div className={styles.waitingMsg}>Waiting for instructor to advance to voting...</div>
         </div>
       </div>
 
-      {done && (() => {
-        const groupSize = session?.phaseConfig?.groupSize ?? 3
-        const firestoreCount = groupMembers.filter(m => m.individualComplete).length
-        const selfCounted = groupMembers.some(m => m.id === user?.uid && m.individualComplete)
-        const doneCount = (done && !selfCounted) ? firestoreCount + 1 : firestoreCount
-        return (
-          <div className={styles.waitingBanner}>
-            {groupSize === 1
-              ? 'Your ideas are submitted. Proceeding to the next phase...'
-              : `${doneCount} of ${groupSize} group members have submitted.`}
+      <div className={styles.columns}>
+        {/* Individual ideas column */}
+        <div className={styles.column}>
+          <h2 className={styles.columnTitle}>Individual Ideas</h2>
+          <p className={styles.columnSub}>Selected ideas from each member</p>
+          <div className={styles.ideaList}>
+            {(ideas.individual || []).map(idea => (
+              <IdeaPill key={idea.id} idea={idea} variant="individual" />
+            ))}
           </div>
-        )
-      })()}
-
-      {/* Collapsible task brief */}
-      <div className={styles.brief}>
-        <button className={styles.briefToggle} onClick={() => setBriefOpen(o => !o)} type="button">
-          <span>Task Brief</span>
-          <span className={styles.briefChevron}>{briefOpen ? '\u25B2' : '\u25BC'}</span>
-        </button>
-        {briefOpen && (
-          <div className={styles.briefContent}>
-            <p>
-              Design a <strong>completely new product</strong> for people who want to
-              improve their sleep wellness. Consider what users currently have and what
-              unmet needs remain.
-            </p>
-            <div className={styles.exampleBox}>
-              <div className={styles.exampleImgWrap}>
-                <img
-                  src={`${import.meta.env.BASE_URL}images/sleep-mask-example.png`}
-                  alt="Example: Bluetooth sleep mask"
-                  className={styles.exampleImg}
-                  onError={e => { e.target.style.display = 'none' }}
-                />
-              </div>
-              <p className={styles.exampleText}>
-                <strong>Example:</strong> A Bluetooth sleep mask that blocks light and
-                plays relaxing audio through built-in headphones, helping users rest and
-                sleep more comfortably.
-              </p>
-            </div>
-            <div className={styles.briefDetails}>
-              <p>
-                You can generate up to <strong>{maxIdeas} original product ideas</strong>.
-                Each idea should include an <strong>idea title</strong> and a{' '}
-                <strong>description</strong> explaining what it does, how it
-                works, and why it's unique.
-              </p>
-              <p>Use the following <strong>evaluation criteria</strong> to guide your thinking:</p>
-              <ul>
-                <li><strong>Novelty:</strong> Is the idea new, surprising, and original?</li>
-                <li><strong>Feasibility:</strong> Can it be developed with today's technology?</li>
-                <li><strong>Financial Value:</strong> Does it have market potential?</li>
-                <li><strong>Overall Quality:</strong> Is it well-structured and relevant?</li>
-              </ul>
-              {aiEnabled && (
-                <p className={styles.aiNote}>
-                  AI is available on the right panel to help you brainstorm, develop,
-                  and evaluate your ideas.
-                </p>
-              )}
-              {groupPhaseActive && (
-                <p>
-                  When you're done, <strong>double-click</strong> your
-                  best <strong>{ideasCarried} ideas</strong> to select them. These will
-                  be carried forward to the group phase.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Selection indicator */}
-      {groupPhaseActive && ideas.length > 0 && !done && (
-        <div className={styles.selectionBar}>
-          <span className={styles.selectionLabel}>
-            Selected ideas: <strong>{selectedIds.size} / {ideasCarried}</strong>
-          </span>
-          <span className={styles.selectionHint}>Double-click an idea to select or deselect it</span>
         </div>
-      )}
 
-      {/* Idea list */}
-      <div className={styles.ideaList}>
-        {ideas.map((idea, i) => {
-          const isSelected = selectedIds.has(idea.id)
-          const isEditing = editingId === idea.id
+        {/* Group ideas column */}
+        <div className={styles.column}>
+          <h2 className={styles.columnTitle}>Group Ideas</h2>
+          <p className={styles.columnSub}>Generated together in this phase</p>
+          <div className={styles.ideaList}>
+            {(ideas.group || []).map(idea => (
+              <IdeaPill key={idea.id} idea={idea} variant="group" />
+            ))}
 
-          if (isEditing) {
-            return (
-              <div key={idea.id} className={styles.ideaPill + ' ' + styles.ideaPillEditing}>
-                <div className={styles.editFields}>
-                  <input
-                    className={styles.editTitleInput}
-                    value={editTitle}
-                    onChange={e => setEditTitle(e.target.value)}
-                    placeholder="Idea title"
-                    autoFocus
-                  />
-                  <textarea
-                    className={styles.editDescInput}
-                    value={editDesc}
-                    onChange={e => setEditDesc(e.target.value)}
-                    placeholder="Description"
-                    rows={2}
-                  />
-                  <div className={styles.editActions}>
-                    <button
-                      className={`btn-primary ${styles.editSaveBtn}`}
-                      onClick={() => saveEdit(idea.id)}
-                      disabled={!editTitle.trim() || !editDesc.trim()}
-                    >
-                      Save
-                    </button>
-                    <button className={`btn-ghost ${styles.editCancelBtn}`} onClick={cancelEdit}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+            <form onSubmit={submitGroupIdea} className={styles.addPill}>
+              <input
+                className={styles.addTitleInput}
+                type="text"
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                placeholder="Idea title"
+                disabled={submitting}
+              />
+              <div className={styles.addDivider} />
+              <textarea
+                className={styles.addDescInput}
+                value={newDesc}
+                onChange={e => setNewDesc(e.target.value)}
+                placeholder="Description"
+                rows={2}
+                disabled={submitting}
+              />
+              <div className={styles.addFooter}>
+                <button
+                  className={`btn-primary ${styles.addBtn}`}
+                  type="submit"
+                  disabled={submitting || !newTitle.trim() || !newDesc.trim()}
+                >
+                  {submitting ? 'Adding...' : 'Add'}
+                </button>
               </div>
-            )
-          }
-
-          return (
-            <div
-              key={idea.id}
-              className={`${styles.ideaPill} ${isSelected ? styles.ideaPillSelected : ''}`}
-              onDoubleClick={() => !done && toggleSelect(idea.id)}
-            >
-              <div className={styles.pillTop}>
-                <h3 className={styles.pillTitle}>{idea.title || idea.text}</h3>
-                <div className={styles.pillActions}>
-                  {isSelected && <span className={styles.selectedBadge}>Selected</span>}
-                  {!done && (
-                    <>
-                      <button
-                        className={styles.editBtn}
-                        onClick={e => { e.stopPropagation(); startEdit(idea) }}
-                        title="Edit idea"
-                        type="button"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                          <path d="M10.08 1.34a1.17 1.17 0 0 1 1.66 0l.92.92a1.17 1.17 0 0 1 0 1.66L4.8 11.78l-3.3.92.92-3.3L10.08 1.34Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                      <button
-                        className={styles.deleteBtn}
-                        onClick={e => { e.stopPropagation(); deleteIdea(idea.id) }}
-                        title="Delete idea"
-                        type="button"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                          <path d="M1.5 3.5h11M5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M3.5 3.5l.5 8.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M5.5 6v4M8.5 6v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                        </svg>
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              {idea.description && (
-                <>
-                  <div className={styles.pillDivider} />
-                  <p className={styles.pillDesc}>{idea.description}</p>
-                </>
-              )}
-            </div>
-          )
-        })}
-
-        {!done && !atMax && (
-          <form onSubmit={submitIdea} className={styles.addPill}>
-            <input
-              className={styles.addTitleInput}
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Idea title"
-              disabled={submitting || done}
-            />
-            <div className={styles.addDivider} />
-            <textarea
-              className={styles.addDescInput}
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Description"
-              rows={2}
-              disabled={submitting || done}
-            />
-            <div className={styles.addFooter}>
-              <span className={styles.addCount}>{ideas.length} / {maxIdeas} ideas</span>
-              <button
-                className={`btn-primary ${styles.addBtn}`}
-                type="submit"
-                disabled={submitting || !title.trim() || !description.trim() || done}
-              >
-                {submitting ? 'Adding...' : '+ Add Idea'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {atMax && !done && (
-          <div className={styles.maxReached}>
-            Maximum ideas reached.
-            {groupPhaseActive
-              ? ` Double-click to select your top ${ideasCarried}, then click Finish & Submit.`
-              : ' Review your ideas above and click Finish when ready.'}
+            </form>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -500,7 +237,12 @@ export default function IndividualPhase() {
       <SplitLayout
         leftPanel={mainPanel}
         rightPanel={aiEnabled ? (
-          <AIChat sessionId={sessionId} scope="individual" scopeId={user?.uid} aiConfig={session?.aiConfig} />
+          <AIChat
+            sessionId={sessionId}
+            scope="group"
+            scopeId={groupId}
+            aiConfig={session?.aiConfig}
+          />
         ) : null}
         defaultSplit={58}
       />

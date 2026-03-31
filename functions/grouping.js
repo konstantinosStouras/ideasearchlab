@@ -61,16 +61,20 @@ exports.autoGroupParticipants = functions.firestore
 
     // All group members done - move them all to group phase using a batch
     const batch = db.batch()
+    const groupMemberIds = members.map(m => m.id)
+
     members.forEach(m => {
       batch.update(sessionRef.collection('participants').doc(m.id), {
         status: 'group',
       })
     })
 
-    // Check if ALL participants in the session are now resolved
+    // Check if ALL participants in the session are now resolved.
+    // Account for all members of THIS group (they are about to be moved
+    // to 'group' in this batch but Firestore hasn't committed yet).
     const allParticipantsSnap = await sessionRef.collection('participants').get()
     const allSessionDone = allParticipantsSnap.docs.every(d => {
-      if (d.id === change.after.id) return true // just moved to group
+      if (groupMemberIds.includes(d.id)) return true // being moved to group in this batch
       const p = d.data()
       return ['group', 'voting', 'survey', 'done'].includes(p.status)
     })

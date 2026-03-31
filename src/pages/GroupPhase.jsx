@@ -131,7 +131,8 @@ export default function GroupPhase() {
           <div className={styles.memberPills}>
             {members.map(m => (
               <span key={m.id} className={`${styles.pill} ${m.id === user.uid ? styles.pillMe : ''}`}>
-                {m.name?.split(' ')[0] || 'Member'}
+                {memberLabels[m.id] || m.anonymousLabel || 'Member'}
+                {m.id === user.uid && ' (you)'}
               </span>
             ))}
           </div>

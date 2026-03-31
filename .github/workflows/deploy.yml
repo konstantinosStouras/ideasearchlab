@@ -27,8 +27,8 @@ jobs:
 
       - name: Inject SPA redirect script into index.html
         run: |
-          sed -i 's|<head>|<head><script>(function(){var r=sessionStorage.getItem("spa_redirect");if(r){sessionStorage.removeItem("spa_redirect");window.history.replaceState(null,null,r);}}());</script>|' dist/index.html
-
+          sed -i 's|<head>|<head><script>(function(){var p=new URLSearchParams(window.location.search).get("redirect");if(p){window.history.replaceState(null,null,decodeURIComponent(p));}}());</script>|' dist/index.html
+          
       - name: Add 404.html for React Router
         run: cp dist/index.html dist/404.html
 

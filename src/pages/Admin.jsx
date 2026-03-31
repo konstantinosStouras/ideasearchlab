@@ -7,6 +7,7 @@ import {
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import styles from './Admin.module.css'
 
 function generateCode() {
@@ -38,6 +39,7 @@ const DEFAULT_CONFIG = {
 
 export default function Admin() {
   const { user } = useAuth()
+  const { dark, toggle } = useTheme()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
   const [participantCounts, setParticipantCounts] = useState({})
@@ -146,6 +148,9 @@ export default function Admin() {
         <span className={styles.wordmark}>Ideation Challenge</span>
         <div className={styles.headerRight}>
           <span className={styles.role}>Instructor</span>
+          <button className={styles.themeBtn} onClick={toggle} title="Toggle dark mode">
+            {dark ? '☀' : '☾'}
+          </button>
           <button className="btn-ghost" onClick={() => navigate('/admin/ai-settings')}>AI Settings</button>
           <button className="btn-ghost" onClick={() => signOut(auth)}>Sign out</button>
         </div>

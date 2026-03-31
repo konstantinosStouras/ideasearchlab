@@ -118,3 +118,20 @@
   .main { padding: 20px 16px; }
   .grid2, .grid3 { grid-template-columns: 1fr; }
 }
+
+.themeBtn {
+  background: none;
+  border: 1.5px solid var(--border);
+  color: var(--ink);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+}
+.themeBtn:hover { border-color: var(--accent); background: var(--paper-dark); }

@@ -226,9 +226,30 @@ export default function Admin() {
                 </div>
               </div>
 
+              <div className={styles.formActions}>
+                {editingSession ? (
+                  <>
+                    <button className="btn-primary" onClick={saveEdit}>Save Changes</button>
+                    <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
+                  </>
+                ) : (
+                  <button className="btn-primary" onClick={createSession} disabled={creating || (!pc.individualPhaseActive && !pc.groupPhaseActive)}>
+                    {creating ? 'Creating...' : 'Create Session'}
+                  </button>
+                )}
+              </div>
+
+              {lastCreatedCode && (
+                <div className={styles.createdCodeBox}>
+                  <p className={styles.createdCodeLabel}>Session created! Share this code with participants:</p>
+                  <div className={styles.createdCode}>{lastCreatedCode}</div>
+                  <p className={styles.createdCodeHint}>Share this code before your session begins. Participants join at: <a href="https://www.stouras.com/lab/ideasearchlab" target="_blank" rel="noreferrer">stouras.com/lab/ideasearchlab</a></p>
+                </div>
+              )}
+
               <div className={styles.summary}>
                 <h3 className={styles.summaryTitle}>Setup Summary</h3>
-                <p className={styles.sectionHint} style={{ marginBottom: 10 }}>A quick snapshot of the configuration you are about to launch. You can run multiple sessions with different settings independently.</p>
+                <p className={styles.sectionHint}>A quick snapshot of the configuration you are about to launch. You can run multiple sessions with different settings independently.</p>
                 <div className={styles.summaryGrid}>
                   <div className={styles.summaryRow}>
                     <span className={styles.summaryLabel}>Phases</span>
@@ -254,31 +275,6 @@ export default function Admin() {
                   </div>
                 </div>
               </div>
-
-              <div className={styles.formActions}>
-                {editingSession ? (
-                  <>
-                    <button className="btn-primary" onClick={saveEdit}>Save Changes</button>
-                    <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
-                  </>
-                ) : (
-                  <button className="btn-primary" onClick={createSession} disabled={creating || (!pc.individualPhaseActive && !pc.groupPhaseActive)}>
-                    {creating ? 'Creating...' : 'Create Session'}
-                  </button>
-                )}
-              </div>
-
-              {lastCreatedCode && (
-                <div className={styles.createdCodeBox}>
-                  <p className={styles.createdCodeLabel}>Session created! Share this code with participants:</p>
-                  <div className={styles.createdCode}>{lastCreatedCode}</div>
-                  <p className={styles.createdCodeHint}>Participants do not need an account. They enter this code on the join page to get started.</p>
-                  <button className="btn-primary" style={{ marginTop: 12 }} onClick={() => {
-                    const s = sessions.find(s => s.code === lastCreatedCode)
-                    if (s) navigate(`/admin/session/${s.id}`)
-                  }}>Open host control room</button>
-                </div>
-              )}
             </div>
           </div>
 

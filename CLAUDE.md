@@ -15,7 +15,7 @@ to give Claude full context about this project instantly.
 **Cloud Functions (all in europe-west1):**
 - joinSession: registers participant, immediately forms a group if enough people are waiting, starts their first phase. Passes joiningUid to tryFormGroup to avoid Firestore read-after-write race condition.
 - advancePhase: instructor-controlled override for voting → survey → done (individual/group transitions are automatic)
-- autoGroupParticipants: Firestore trigger - when all members of a group complete individual phase, moves them to group phase
+- autoGroupParticipants: Firestore trigger - when all members of a group complete individual phase, moves them to group phase. Session auto-advance check accounts for all group members being moved in the batch (not just the triggering participant), fixing a bug where session status stayed on "individual" even after all participants moved to group.
 - handleStragglers: callable - forms undersized groups or sends solo participants to survey for lobby stragglers
 - sendAIMessage: calls LLM, stores response
 - saveAISettings: saves global AI provider settings
@@ -81,9 +81,14 @@ participants/{uid}: {
 - Participant display falls back to anonymousLabel or truncated ID if name is missing
 - Phase order value humanised (individual_first -> individual first)
 **IndividualPhase.jsx:**
+- Uses useNavigate to auto-navigate when participant status changes (group, voting, survey, done). This was the missing piece that caused participants to get stuck on "Waiting for group..." after all members submitted.
 - Submission count banner shows: "{doneCount} of {groupSize} group members have submitted."
-- doneCount = groupMembers.filter(m => m.individualComplete).length (no self-correction needed, Firestore listener updates correctly)
+- doneCount accounts for the local user's submission before Firestore listener catches up (done && !selfCounted adds 1)
 - groupMembers is populated via onSnapshot query on participants where groupId matches
+**GroupPhase.jsx:**
+- Member pills display anonymous labels (p1, p2) with "(you)" suffix for the current user, never real names
+- "you" tag shown on both individual and group idea cards authored by the current user
+- Status listener navigates to survey/done when status changes
 **Survey.jsx:**
 - On submit, writes status: 'done', surveyAnswers, surveyCompletedAt to participant doc directly (no Cloud Function)
 - onParticipantUpdated trigger in session.js detects all-done and advances session to 'done'
@@ -118,5 +123,6 @@ Note: Firebase detects unchanged functions and skips them. If a redeploy is skip
 - CSS module filenames are case-sensitive on the GitHub Pages build server. Always use dots not underscores (Admin.module.css not Admin_module.css).
 - Browser cache can mask deployed changes. Use Ctrl+Shift+R or incognito to verify.
 - Git tags used for lightweight version snapshots; CLAUDE.md at repo root for project context onboarding.
-**Current status:** App is live. Admin panel UI improvements complete. Auto-group-on-join implemented and race condition fixed. survey→done auto-advance implemented via onParticipantUpdated trigger. IndividualPhase submission count display fixed. Full participant flow testing in progress.
-**Next steps when resuming:** continue testing the full participant flow end to end -- verify group formation triggers correctly on join, anonymous labels display in group phase, voting works, survey completes and session advances to done automatically.
+- autoGroupParticipants session-advance check must account for all group members in the current batch, not just the triggering participant. Using only change.after.id causes the check to fail for groups of 2+ because the other members still show old status in Firestore before the batch commits.
+**Current status:** App is live. Individual-to-group transition working end to end. Anonymous labels displaying correctly in group phase (pills and idea cards). Session status auto-advances from individual to group. Testing voting phase next.
+**Next steps when resuming:** Test voting phase end to end -- verify instructor can advance to voting, participants can vote, session auto-advances to survey when all votes are in, survey completes and session advances to done automatically.

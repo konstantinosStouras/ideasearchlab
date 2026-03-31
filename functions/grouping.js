@@ -45,6 +45,8 @@ exports.autoGroupParticipants = functions.firestore
         session.phaseConfig?.phaseOrder !== 'individual_first'
       ) return
 
+      const groupSize = session.phaseConfig?.groupSize ?? 3
+
       // Find all unassigned completed participants
       const readySnap = await tx.get(
         sessionRef.collection('participants')
@@ -54,48 +56,47 @@ exports.autoGroupParticipants = functions.firestore
 
       const ready = readySnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-      if (ready.length < 2) {
-        // Only 1 ready, update their status to waiting_for_group
-        tx.update(change.after.ref, { status: 'waiting_for_group' })
-        return
-      }
+      if (ready.length >= groupSize) {
+        // Enough for a full group: take the first groupSize and form a group
+        const toGroup = ready.slice(0, groupSize)
+        await formGroup(tx, sessionRef, toGroup)
 
-      if (ready.length === 2) {
-        // Check: is the session phase about to end (all participants done)?
-        const allSnap = await tx.get(sessionRef.collection('participants'))
-        const allParticipants = allSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        const totalUnassigned = allParticipants.filter(
-          p => !p.groupId && p.id !== ready[0].id && p.id !== ready[1].id
-        )
-
-        const anyStillInIndividual = totalUnassigned.some(
-          p => !p.individualComplete
-        )
-
-        if (anyStillInIndividual) {
-          // More participants still working, keep waiting
-          ready.forEach(p => {
-            const ref = sessionRef.collection('participants').doc(p.id)
-            tx.update(ref, { status: 'waiting_for_group' })
+        // Mark the rest as waiting_for_group
+        ready.slice(groupSize).forEach(p => {
+          tx.update(sessionRef.collection('participants').doc(p.id), {
+            status: 'waiting_for_group',
           })
-          return
-        }
-
-        // No one left in individual phase: form a group of 2
-        await formGroup(tx, sessionRef, ready)
+        })
         return
       }
 
-      // 3+ ready: take the first 3 and form a group
-      const toGroup = ready.slice(0, 3)
-      await formGroup(tx, sessionRef, toGroup)
-
-      // Mark the rest as waiting_for_group
-      ready.slice(3).forEach(p => {
-        tx.update(sessionRef.collection('participants').doc(p.id), {
-          status: 'waiting_for_group',
-        })
+      // Fewer than groupSize are ready. Check if anyone is still working.
+      const allSnap = await tx.get(sessionRef.collection('participants'))
+      const anyStillWorking = allSnap.docs.some(d => {
+        const p = d.data()
+        return !p.individualComplete && !p.groupId
       })
+
+      if (anyStillWorking) {
+        // More participants still coming, keep everyone waiting
+        ready.forEach(p => {
+          tx.update(sessionRef.collection('participants').doc(p.id), {
+            status: 'waiting_for_group',
+          })
+        })
+        return
+      }
+
+      // Nobody left working. Handle remainders.
+      if (ready.length === 1) {
+        // Solo straggler goes directly to survey
+        tx.update(sessionRef.collection('participants').doc(ready[0].id), {
+          status: 'survey',
+        })
+      } else if (ready.length >= 2) {
+        // Form a smaller group with whoever is left
+        await formGroup(tx, sessionRef, ready)
+      }
     })
   })
 
@@ -147,6 +148,8 @@ exports.handleStragglers = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('permission-denied', 'Only the instructor can do this.')
   }
 
+  const groupSize = session.phaseConfig?.groupSize ?? 3
+
   const stragglersSnap = await sessionRef.collection('participants')
     .where('status', '==', 'waiting_for_group')
     .get()
@@ -158,55 +161,34 @@ exports.handleStragglers = functions.https.onCall(async (data, context) => {
     return { handled: 0 }
   }
 
-  if (stragglers.length === 1) {
-    batch.update(
-      sessionRef.collection('participants').doc(stragglers[0].id),
-      { status: 'survey' }
-    )
-  } else if (stragglers.length === 2) {
-    const groupRef = sessionRef.collection('groups').doc()
-    batch.set(groupRef, {
-      members: stragglers.map(s => s.id),
-      status: 'active',
-      finalIdeas: [],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
-    stragglers.forEach(s => {
-      batch.update(sessionRef.collection('participants').doc(s.id), {
-        groupId: groupRef.id,
-        status: 'group',
+  // Pack stragglers into groups using the session's groupSize.
+  // Any final solo leftover goes directly to survey.
+  let i = 0
+  while (i < stragglers.length) {
+    const remaining = stragglers.length - i
+    if (remaining === 1) {
+      batch.update(
+        sessionRef.collection('participants').doc(stragglers[i].id),
+        { status: 'survey' }
+      )
+      i++
+    } else {
+      const size = Math.min(groupSize, remaining)
+      const groupMembers = stragglers.slice(i, i + size)
+      const groupRef = sessionRef.collection('groups').doc()
+      batch.set(groupRef, {
+        members: groupMembers.map(m => m.id),
+        status: 'active',
+        finalIdeas: [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       })
-    })
-  } else {
-    // More than 2: form as many groups of 3 as possible, recurse remainder
-    // (shouldn't happen in normal flow but handle gracefully)
-    let i = 0
-    while (i < stragglers.length) {
-      const remaining = stragglers.length - i
-      const groupSize = remaining === 1 ? 1 : remaining === 2 ? 2 : 3
-      const groupMembers = stragglers.slice(i, i + groupSize)
-
-      if (groupSize === 1) {
-        batch.update(
-          sessionRef.collection('participants').doc(groupMembers[0].id),
-          { status: 'survey' }
-        )
-      } else {
-        const groupRef = sessionRef.collection('groups').doc()
-        batch.set(groupRef, {
-          members: groupMembers.map(m => m.id),
-          status: 'active',
-          finalIdeas: [],
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      groupMembers.forEach(m => {
+        batch.update(sessionRef.collection('participants').doc(m.id), {
+          groupId: groupRef.id,
+          status: 'group',
         })
-        groupMembers.forEach(m => {
-          batch.update(sessionRef.collection('participants').doc(m.id), {
-            groupId: groupRef.id,
-            status: 'group',
-          })
-        })
-      }
-      i += groupSize
+      })
+      i += size
     }
   }
 

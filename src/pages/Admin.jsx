@@ -24,6 +24,7 @@ const DEFAULT_CONFIG = {
     individualPhaseDuration: 600,
     groupPhaseDuration: 900,
     votingDuration: 300,
+    groupSize: 3,
   },
   aiConfig: {
     individualAI: false,
@@ -188,6 +189,11 @@ export default function Admin() {
                   <NumberField label="Max ideas (individual)" value={pc.maxIdeasIndividual} min={1} max={20} onChange={v => setPhase('maxIdeasIndividual', v)} disabled={!pc.individualPhaseActive} />
                   <NumberField label="Ideas carried to group" value={pc.ideasCarriedToGroup} min={1} max={pc.maxIdeasIndividual} onChange={v => setPhase('ideasCarriedToGroup', v)} disabled={!pc.individualPhaseActive || !pc.groupPhaseActive} />
                 </div>
+                {pc.groupPhaseActive && (
+                  <div className={styles.grid2} style={{ marginTop: 12 }}>
+                    <NumberField label="Participants per group (1 = solo test)" value={pc.groupSize} min={1} max={10} onChange={v => setPhase('groupSize', v)} />
+                  </div>
+                )}
               </div>
 
               <div className={styles.section}>
@@ -222,6 +228,12 @@ export default function Admin() {
                     <span className={styles.summaryLabel}>Ideas</span>
                     <span className={styles.summaryValue}>Max {pc.maxIdeasIndividual}, carry {pc.ideasCarriedToGroup} to group</span>
                   </div>
+                  {pc.groupPhaseActive && (
+                    <div className={styles.summaryRow}>
+                      <span className={styles.summaryLabel}>Group size</span>
+                      <span className={styles.summaryValue}>{pc.groupSize} per group</span>
+                    </div>
+                  )}
                   <div className={styles.summaryRow}>
                     <span className={styles.summaryLabel}>AI</span>
                     <span className={styles.summaryValue}>Individual: {ac.individualAI ? 'On' : 'Off'} / Group: {ac.groupAI ? 'On' : 'Off'}</span>

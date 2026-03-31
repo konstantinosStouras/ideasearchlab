@@ -15,7 +15,10 @@ export function RequireAuth({ children }) {
 export function RequireGuest({ children }) {
   const { user } = useAuth()
   if (user === undefined) return null
-  if (user !== null) return <Navigate to="/join" replace />
+  if (user !== null) {
+    if (user.email === ADMIN_EMAIL) return <Navigate to="/admin" replace />
+    return <Navigate to="/join" replace />
+  }
   return children
 }
 

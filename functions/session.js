@@ -8,7 +8,7 @@ const db = admin.firestore()
  * Called after a new participant joins. If enough participants are waiting,
  * immediately forms a group and starts their first phase.
  */
-async function tryFormGroup(sessionId, session) {
+async function tryFormGroup(sessionId, session, joiningUid = null) {
   const sessionRef = db.collection('sessions').doc(sessionId)
   const groupSize = session.phaseConfig?.groupSize ?? 3
   const individualActive = session.phaseConfig?.individualPhaseActive ?? true
@@ -19,7 +19,13 @@ async function tryFormGroup(sessionId, session) {
     .where('status', '==', 'waiting')
     .get()
 
-  const waiting = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const waitingFromDB = waitingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+  // Include the joining participant even if Firestore hasn't reflected them yet
+  const alreadyIncluded = waitingFromDB.some(p => p.id === joiningUid)
+  const waiting = (joiningUid && !alreadyIncluded)
+    ? [...waitingFromDB, { id: joiningUid, status: 'waiting' }]
+    : waitingFromDB
 
   if (waiting.length < groupSize) return // not enough yet
 
@@ -107,7 +113,7 @@ exports.joinSession = functions.https.onCall(async (data, context) => {
     })
 
     // Try to form a group immediately if enough participants are now waiting
-    await tryFormGroup(sessionId, session)
+    await tryFormGroup(sessionId, session, context.auth.uid)
   }
 
   return { sessionId, status: session.status }

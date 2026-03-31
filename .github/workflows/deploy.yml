@@ -49,7 +49,7 @@ jobs:
           cd site
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
+          git pull --rebase origin master
           git add lab/ideasearchlab/
           git commit -m "Deploy ideation app to lab/ideasearchlab" || echo "Nothing to commit"
-          git pull --rebase origin master || true
           git push origin master

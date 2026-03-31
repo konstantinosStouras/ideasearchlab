@@ -45,6 +45,7 @@ export default function Admin() {
   const [sessions, setSessions] = useState([])
   const [participantCounts, setParticipantCounts] = useState({})
   const [creating, setCreating] = useState(false)
+  const [lastCreatedCode, setLastCreatedCode] = useState(null)
   const [editingSession, setEditingSession] = useState(null)
   const [config, setConfig] = useState(DEFAULT_CONFIG)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -78,6 +79,7 @@ export default function Admin() {
 
   async function createSession() {
     setCreating(true)
+    setLastCreatedCode(null)
     try {
       const code = generateCode()
       const docRef = await addDoc(collection(db, 'sessions'), {
@@ -88,7 +90,8 @@ export default function Admin() {
         createdAt: serverTimestamp(),
         ...config,
       })
-      navigate(`/admin/session/${docRef.id}`)
+      setLastCreatedCode(code)
+      // Do NOT navigate away — show the code prominently instead
     } catch (err) {
       console.error(err)
     } finally {
@@ -107,6 +110,7 @@ export default function Admin() {
   }
 
   function startEdit(session) {
+    setLastCreatedCode(null)
     setEditingSession(session)
     setConfig({ phaseConfig: session.phaseConfig, aiConfig: session.aiConfig })
   }
@@ -165,9 +169,15 @@ export default function Admin() {
                 {editingSession ? `Edit Session — ${editingSession.code}` : 'Create New Session'}
                 {editingSession && <span className={styles.editBadge}>editing</span>}
               </h2>
+              <p className={styles.cardSubtitle}>
+                {editingSession
+                  ? 'Adjust the configuration for this session. Changes apply immediately on save.'
+                  : 'Configure the session structure, timers, and AI assistance before launching.'}
+              </p>
 
               <div className={styles.section}>
                 <h3 className={styles.subTitle}>Phases</h3>
+                <p className={styles.sectionHint}>Select which phases to include and the order participants will move through them.</p>
                 <div className={styles.grid2}>
                   <Toggle label="Individual Phase" checked={pc.individualPhaseActive} onChange={v => setPhase('individualPhaseActive', v)} />
                   <Toggle label="Group Phase" checked={pc.groupPhaseActive} onChange={v => setPhase('groupPhaseActive', v)} />
@@ -185,6 +195,7 @@ export default function Admin() {
 
               <div className={styles.section}>
                 <h3 className={styles.subTitle}>Idea Parameters</h3>
+                <p className={styles.sectionHint}>Control how many ideas each participant can submit and how many carry forward into the group phase.</p>
                 <div className={styles.grid2}>
                   <NumberField label="Max ideas (individual)" value={pc.maxIdeasIndividual} min={1} max={20} onChange={v => setPhase('maxIdeasIndividual', v)} disabled={!pc.individualPhaseActive} />
                   <NumberField label="Ideas carried to group" value={pc.ideasCarriedToGroup} min={1} max={pc.maxIdeasIndividual} onChange={v => setPhase('ideasCarriedToGroup', v)} disabled={!pc.individualPhaseActive || !pc.groupPhaseActive} />
@@ -198,6 +209,7 @@ export default function Admin() {
 
               <div className={styles.section}>
                 <h3 className={styles.subTitle}>Phase Timers (seconds, blank = manual)</h3>
+                <p className={styles.sectionHint}>Set a countdown for each phase, or leave blank to advance manually from the host control room.</p>
                 <div className={styles.grid3}>
                   <NumberField label="Individual" value={pc.individualPhaseDuration} min={60} onChange={v => setPhase('individualPhaseDuration', v)} disabled={!pc.individualPhaseActive} nullable />
                   <NumberField label="Group" value={pc.groupPhaseDuration} min={60} onChange={v => setPhase('groupPhaseDuration', v)} disabled={!pc.groupPhaseActive} nullable />
@@ -207,6 +219,7 @@ export default function Admin() {
 
               <div className={styles.section}>
                 <h3 className={styles.subTitle}>AI Assistant</h3>
+                <p className={styles.sectionHint}>Enable AI assistance per phase. Provider and model are configured globally in AI Settings.</p>
                 <div className={styles.grid2}>
                   <Toggle label="AI in Individual Phase" checked={ac.individualAI} onChange={v => setAI('individualAI', v)} disabled={!pc.individualPhaseActive} />
                   <Toggle label="AI in Group Phase" checked={ac.groupAI} onChange={v => setAI('groupAI', v)} disabled={!pc.groupPhaseActive} />
@@ -215,6 +228,7 @@ export default function Admin() {
 
               <div className={styles.summary}>
                 <h3 className={styles.summaryTitle}>Setup Summary</h3>
+                <p className={styles.sectionHint} style={{ marginBottom: 10 }}>A quick snapshot of the configuration you are about to launch. You can run multiple sessions with different settings independently.</p>
                 <div className={styles.summaryGrid}>
                   <div className={styles.summaryRow}>
                     <span className={styles.summaryLabel}>Phases</span>
@@ -253,6 +267,18 @@ export default function Admin() {
                   </button>
                 )}
               </div>
+
+              {lastCreatedCode && (
+                <div className={styles.createdCodeBox}>
+                  <p className={styles.createdCodeLabel}>Session created! Share this code with participants:</p>
+                  <div className={styles.createdCode}>{lastCreatedCode}</div>
+                  <p className={styles.createdCodeHint}>Participants do not need an account. They enter this code on the join page to get started.</p>
+                  <button className="btn-primary" style={{ marginTop: 12 }} onClick={() => {
+                    const s = sessions.find(s => s.code === lastCreatedCode)
+                    if (s) navigate(`/admin/session/${s.id}`)
+                  }}>Open host control room</button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -262,6 +288,7 @@ export default function Admin() {
                 Active Sessions
                 <span className={styles.countBadge}>{activeSessions.length} active</span>
               </h2>
+              <p className={styles.cardSubtitle}>Open a session to monitor progress, advance phases, and manage participants in real time.</p>
               {activeSessions.length === 0 ? (
                 <div className={styles.empty}>No active sessions. Create one to get started.</div>
               ) : (
@@ -275,6 +302,7 @@ export default function Admin() {
                   ))}
                 </div>
               )}
+              <p className={styles.joinHint}>Participants join by entering the session code at the join page. No account required.</p>
             </div>
 
             {completedSessions.length > 0 && (
@@ -283,6 +311,7 @@ export default function Admin() {
                   Completed Sessions
                   <span className={styles.countBadge}>{completedSessions.length} total</span>
                 </h2>
+                <p className={styles.cardSubtitle}>Completed sessions are read-only. Review responses or export data before deleting.</p>
                 <div className={styles.sessionList}>
                   {completedSessions.map(s => (
                     <SessionCard key={s.id} session={s} participantCount={participantCounts[s.id] || 0}

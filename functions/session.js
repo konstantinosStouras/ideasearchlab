@@ -156,6 +156,11 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
 
   const nextPhase = sequence[currentIndex + 1]
 
+  // Tally group votes before leaving the group phase
+  if (session.status === 'group' && nextPhase === 'survey') {
+    await tallyGroupVotes(sessionRef)
+  }
+
   // Update session status
   await sessionRef.update({
     status: nextPhase,
@@ -185,11 +190,6 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
       }
     }
 
-    if (nextPhase === 'voting') {
-      // Move all participants currently in group phase into voting
-      if (p.status === 'group') newStatus = 'voting'
-    }
-
     if (nextPhase === 'survey') {
       // Move everyone who hasn't completed the survey yet
       if (!['survey', 'done'].includes(p.status)) newStatus = 'survey'
@@ -215,78 +215,48 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
 
 
 /**
- * autoAdvanceOnTimer
- *
- * Called by any participant when their phase timer expires.
- * Validates server-side that the timer has actually expired,
- * then advances the session to the next phase.
- * Idempotent: if the session has already advanced, returns early.
+ * tallyGroupVotes
+ * Reads each participant's votedFor array, counts votes per idea,
+ * and stores the top 3 ideas on each group document as finalIdeas.
+ * Called when advancing from group phase to survey.
  */
-exports.autoAdvanceOnTimer = functions.https.onCall(async (data, context) => {
-  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
+async function tallyGroupVotes(sessionRef) {
+  const groupsSnap = await sessionRef.collection('groups')
+    .where('status', '==', 'active')
+    .get()
 
-  const { sessionId, fromPhase } = data
-  if (!sessionId || !fromPhase) {
-    throw new functions.https.HttpsError('invalid-argument', 'sessionId and fromPhase required.')
-  }
-
-  const sessionRef = db.collection('sessions').doc(sessionId)
-  const sessionSnap = await sessionRef.get()
-  if (!sessionSnap.exists) throw new functions.https.HttpsError('not-found', 'Session not found.')
-
-  const session = sessionSnap.data()
-
-  // Already advanced past this phase, nothing to do
-  if (session.status !== fromPhase) {
-    return { alreadyAdvanced: true }
-  }
-
-  // Server-side timer validation: check that the timer has actually expired
-  const startMs = session.phaseStartedAt?.toMillis
-    ? session.phaseStartedAt.toMillis()
-    : (session.phaseStartedAt?.seconds || 0) * 1000
-
-  let duration = null
-  if (fromPhase === 'individual') duration = session.phaseConfig?.individualPhaseDuration
-  else if (fromPhase === 'group') duration = session.phaseConfig?.groupPhaseDuration
-  else if (fromPhase === 'voting') duration = session.phaseConfig?.votingDuration
-
-  if (duration && startMs) {
-    const endMs = startMs + duration * 1000
-    // Allow 5 seconds of tolerance for clock skew
-    if (Date.now() < endMs - 5000) {
-      throw new functions.https.HttpsError('failed-precondition', 'Timer has not expired yet.')
-    }
-  }
-
-  // Determine next phase from the sequence
-  const sequence = getPhaseSequence(session.phaseConfig)
-  const currentIndex = sequence.indexOf(fromPhase)
-  if (currentIndex === -1 || currentIndex >= sequence.length - 1) {
-    return { alreadyAdvanced: true }
-  }
-  const nextPhase = sequence[currentIndex + 1]
-
-  // Build the batch: update session + all affected participants
-  const batch = db.batch()
-
-  batch.update(sessionRef, {
-    status: nextPhase,
-    phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-  })
+  if (groupsSnap.empty) return
 
   const participantsSnap = await sessionRef.collection('participants').get()
-  participantsSnap.docs.forEach(pDoc => {
-    const p = pDoc.data()
-    // Move participants who are still in the fromPhase
-    if (p.status === fromPhase) {
-      batch.update(pDoc.ref, { status: nextPhase })
-    }
-  })
+  const participants = participantsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+  const batch = db.batch()
+
+  for (const groupDoc of groupsSnap.docs) {
+    const groupMembers = participants.filter(p => p.groupId === groupDoc.id)
+
+    // Tally votes from all members' votedFor arrays
+    const voteMap = {}
+    groupMembers.forEach(m => {
+      (m.votedFor || []).forEach(ideaId => {
+        voteMap[ideaId] = (voteMap[ideaId] || 0) + 1
+      })
+    })
+
+    const topIdeas = Object.entries(voteMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id]) => id)
+
+    batch.update(groupDoc.ref, {
+      status: 'done',
+      finalIdeas: topIdeas,
+      votingCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  }
 
   await batch.commit()
-  return { nextPhase }
-})
+}
 
 
 /**
@@ -340,6 +310,9 @@ async function preAssignGroups(sessionId, participants, phaseConfig) {
 /**
  * Shared phase sequence logic (mirrors frontend utils/phaseSequence.js).
  * Must stay in sync with the frontend version.
+ *
+ * NOTE: 'voting' has been removed from the sequence. Voting now happens
+ * inline during the group phase. The transition is group -> survey -> done.
  */
 function getPhaseSequence(phaseConfig = {}) {
   const {
@@ -352,14 +325,14 @@ function getPhaseSequence(phaseConfig = {}) {
 
   if (individualPhaseActive && groupPhaseActive) {
     if (phaseOrder === 'individual_first') {
-      sequence.push('individual', 'group', 'voting')
+      sequence.push('individual', 'group')
     } else {
-      sequence.push('group', 'voting', 'individual')
+      sequence.push('group', 'individual')
     }
   } else if (individualPhaseActive) {
     sequence.push('individual')
   } else if (groupPhaseActive) {
-    sequence.push('group', 'voting')
+    sequence.push('group')
   }
 
   sequence.push('survey', 'done')

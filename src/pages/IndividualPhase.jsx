@@ -69,7 +69,6 @@ export default function IndividualPhase() {
         setGroupId(data.groupId)
         const status = data.status
         if (status === 'group') navigate(`/session/${sessionId}/group`)
-        else if (status === 'voting') navigate(`/session/${sessionId}/voting`)
         else if (status === 'survey') navigate(`/session/${sessionId}/survey`)
         else if (status === 'done') navigate(`/session/${sessionId}/done`)
       }
@@ -258,7 +257,7 @@ export default function IndividualPhase() {
   // ─── Workspace view ───
   const atMax = ideas.length >= maxIdeas
   const hasSelection = selectedIds.size > 0
-  const canFinish = ideas.length > 0 && hasSelection && !done
+  const canFinish = ideas.length > 0 && (!groupPhaseActive || hasSelection) && !done
 
   const mainPanel = (
     <div className={styles.main}>

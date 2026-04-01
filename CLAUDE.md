@@ -14,26 +14,27 @@ to give Claude full context about this project instantly.
 **Frontend:** React + Vite, React Router with basename="/lab/ideasearchlab"
 **Cloud Functions (all in europe-west1):**
 - joinSession: registers participant, immediately forms a group if enough people are waiting, starts their first phase. Passes joiningUid to tryFormGroup to avoid Firestore read-after-write race condition.
-- advancePhase: instructor-controlled override for voting -> survey -> done (individual/group transitions are automatic)
+- advancePhase: instructor-controlled override for any phase transition (manual "Force advance" button)
+- autoAdvanceOnTimer: callable by any participant when a phase timer expires. Validates server-side that the timer has actually expired (with 5s tolerance for clock skew), then advances session and all participants in the current phase. Idempotent: returns early if session already advanced past the requested fromPhase.
 - autoGroupParticipants: Firestore trigger - when all members of a group complete individual phase, moves them to group phase. Session auto-advance check accounts for all group members being moved in the batch (not just the triggering participant), fixing a bug where session status stayed on "individual" even after all participants moved to group.
 - handleStragglers: callable - forms undersized groups or sends solo participants to survey for lobby stragglers
 - sendAIMessage: calls LLM, stores response
 - saveAISettings: saves global AI provider settings
-- submitVote: records votes, tallies top ideas, auto-advances session to survey when all have voted
+- submitVote: records votes, tallies top ideas, auto-advances session to survey when all have voted (legacy, kept for backward compatibility)
 - onParticipantUpdated: Firestore trigger - when a participant's status becomes 'done', checks if all participants are done and advances session status to 'done'
 **AI providers supported:** Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google). Keys stored in Firestore settings/ai document, managed via /admin/ai-settings page.
-**Session flow:** waiting -> individual -> group -> voting -> survey -> done (order and active phases configurable per session)
+**Session flow:** waiting -> individual -> group (ideation) -> voting (group voting) -> survey -> done (order and active phases configurable per session)
 
-## Participant onboarding flow (new)
+## Participant onboarding flow
 The participant join flow now has four steps before reaching the session lobby:
 1. **JoinSession** (`src/pages/JoinSession.jsx`): Enter session code. Validates code client-side via Firestore query. If participant is new, navigates to Welcome. If already registered (rejoining), skips directly to SessionLobby.
-2. **Welcome** (`src/pages/Welcome.jsx` + `Welcome.module.css`): NEW page. Displays study overview with dynamic phase descriptions based on session's `phaseConfig`. Adapts text for individual-first, group-first, individual-only, or group-only configurations. Amazon Voucher paragraph only shown when group phase is active. "I agree and continue" button navigates to Registration.
-3. **Registration** (`src/pages/Registration.jsx` + `Registration.module.css`): NEW page. Collects demographics (Age, Gender, Nationality, Country, Level of Study, Work Experience, Occupation, English Fluency) plus two consent checkboxes. Nationality and Country use dropdown menus with full 195-country list. Work Experience is a number input validated 0-50. On submit, calls `joinSession` Cloud Function, then writes demographics to participant doc via `updateDoc`. Data stored as `demographics` object + `consentGiven` + `consentTimestamp` on participant document.
+2. **Welcome** (`src/pages/Welcome.jsx` + `Welcome.module.css`): Displays study overview with dynamic phase descriptions based on session's `phaseConfig`. Adapts text for individual-first, group-first, individual-only, or group-only configurations. Amazon Voucher paragraph only shown when group phase is active. "I agree and continue" button navigates to Registration.
+3. **Registration** (`src/pages/Registration.jsx` + `Registration.module.css`): Collects demographics (Age, Gender, Nationality, Country, Level of Study, Work Experience, Occupation, English Fluency) plus two consent checkboxes. Nationality and Country use dropdown menus with full 195-country list. Work Experience is a number input validated 0-50. On submit, calls `joinSession` Cloud Function, then writes demographics to participant doc via `updateDoc`. Data stored as `demographics` object + `consentGiven` + `consentTimestamp` on participant document.
 4. **SessionLobby**: Existing page, unchanged.
 
 Routes added to `App.jsx`: `/session/:sessionId/welcome` and `/session/:sessionId/register`, both wrapped in SessionWrapper.
 
-## Idea data model (updated)
+## Idea data model
 Ideas now have structured fields instead of just `text`:
 ```
 ideas/{ideaId}: {
@@ -41,7 +42,8 @@ ideas/{ideaId}: {
   description: string,    // description (smaller text below)
   text: string,           // combined "title: description" for backward compatibility
   authorId, authorName, phase, groupId, votes, createdAt,
-  selected: boolean       // true if user chose this as a top idea for group phase
+  selected: boolean,      // true if user chose this as a top idea for group phase
+  votedBy: [uid, ...]     // array of participant UIDs who voted for this idea (group voting)
 }
 ```
 
@@ -51,17 +53,53 @@ ideas/{ideaId}: {
 - **Collapsible Task Brief**: Shown in workspace, contains the sleep wellness product design prompt, example product with image (`public/images/sleep-mask-example.png`), evaluation criteria (Novelty, Feasibility, Financial Value, Overall Quality), AI note (conditional), and selection instructions.
 - **Structured idea submission**: Two fields, "Idea title" and "Description", rendered in pill-shaped cards (border-radius: 20px) with bold title, gradient separator line, and smaller description text.
 - **Inline editing**: Pencil icon appears on hover, click enters edit mode with editable fields + Save/Cancel.
-- **Delete**: Trash bin icon appears on hover (red on hover), calls `deleteDoc`. Requires Firestore rule: `allow delete: if request.auth.uid == resource.data.authorId;`
+- **Delete**: Trash bin icon appears on hover (red on hover), calls `deleteDoc`.
 - **Double-click selection**: Double-click toggles idea selection for group carry-over. Selected cards get accent border, glow, and "Selected" badge. Selection bar shows count ("Selected ideas: 2 / 3"). Maximum controlled by `ideasCarriedToGroup`.
 - **Finish & Submit**: Disabled until at least one idea is selected. Does participant `updateDoc` first (critical), then idea selection batch separately (non-critical, fails gracefully if Firestore rules missing).
 - **Static image**: Example sleep mask image at `public/images/sleep-mask-example.png`. The `<img>` tag hides itself via `onError` if file not found.
 
-## GroupPhase.jsx (updated)
-- **Consistent pill card design**: Same oval pill cards as IndividualPhase with title/separator/description pattern.
-- **Title + description submission**: Group idea form now has two fields ("Idea title" and "Description") instead of single textarea. Writes `title`, `description`, and `text` to Firestore.
-- **Individual ideas filter with fallback**: Prefers ideas with `selected: true`. Falls back to latest N by `createdAt` if no selected ideas found (handles case where selection batch failed due to Firestore rules).
-- **Voting navigation fix**: Status listener now handles `voting` status (was missing, caused participants to get stuck on group phase when instructor advanced to voting).
-- **IdeaPill component**: Shared render function for individual and group idea cards with author label, you-tag, title, divider, description.
+## GroupPhase.jsx (major update -- dual mode with chat)
+GroupPhase now handles two sub-phases in a single component, determined by participant status:
+- **`group` status = Group Ideation Phase**: idea creation enabled, chat enabled, AI panel shown (if configured)
+- **`voting` status = Group Voting Phase**: idea creation form hidden, chat stays, double-click voting enabled, AI panel hidden
+
+### Layout (both modes)
+- **Two-column grid**: Left column = Individual Ideas (selected/carried from individual phase). Right column = split vertically into Group Ideas (top, max 45% height, scrollable) and Group Chat (bottom, fills remaining space).
+- **Pill card design**: Same oval pill cards as IndividualPhase with title/separator/description pattern, author label (p1, p2...), "you" tag.
+
+### Group Ideation mode
+- Title + description submission form (dashed-border pill card) for adding group ideas
+- Chat for real-time group discussion
+- Timer uses `groupPhaseDuration` (default 900s = 15min)
+- When timer expires, calls `autoAdvanceOnTimer({ sessionId, fromPhase: 'group' })` to advance all participants to voting
+
+### Group Voting mode
+- Add idea form hidden
+- Double-click any idea pill to toggle a vote (max 3 votes per participant)
+- Votes tracked via `votedBy` array on idea docs using `arrayUnion`/`arrayRemove` (no separate votes counter, avoids sync issues)
+- Ideas sorted by vote count descending (most voted float to top)
+- "Votes: N" badge shown on top-right of pill cards with votes
+- Voted pills get accent border + glow. Maxed-out pills get dimmed (0.45 opacity)
+- Vote counter in top bar shows "2 / 3" style display
+- Timer uses `votingDuration` (default 300s = 5min)
+- When timer expires, calls `autoAdvanceOnTimer({ sessionId, fromPhase: 'voting' })` to advance to survey
+- Chat remains active during voting for group discussion
+
+### Group Chat
+- Messages stored in Firestore subcollection: `sessions/{sessionId}/groups/{groupId}/messages/{messageId}`
+- Each message: `{ authorId, text, createdAt }`
+- Real-time `onSnapshot` listener, ordered by `createdAt` ascending
+- WhatsApp-style bubbles: own messages right-aligned with accent tint, others left-aligned with sender's anonymous label (p1, p2) shown above
+- Small timestamp on bottom-right of each bubble
+- Enter to send, Shift+Enter for new line
+- Auto-scroll to newest message
+- Available in both ideation and voting modes
+
+### Individual ideas filter (unchanged)
+- Prefers ideas with `selected: true`. Falls back to latest N by `createdAt` if no selected ideas found (handles case where selection batch failed due to Firestore rules).
+
+## VotingPhase.jsx (retired)
+The separate VotingPhase page is no longer used. The `/voting` route in App.jsx now renders `<GroupPhase />` which handles the voting sub-phase internally based on participant status. The old VotingPhase.jsx and VotingPhase.module.css files remain in the repo but are not imported anywhere.
 
 ## Survey (redesigned)
 - **surveyQuestions.js** (`src/data/surveyQuestions.js`): Completely rewritten with 12 questions across 4 sections:
@@ -74,13 +112,31 @@ ideas/{ideaId}: {
 - **Survey.jsx**: Questions grouped into section cards. Connected-dot scale for likert5 (dots on a track line). Table grid for rating_group with alternating row shading. Pill-shaped radio buttons. Conditional follow-up field (Q10). Proper validation for all types including nested groups and conditional follow-ups.
 - **Survey.module.css**: Section cards with shaded headers, responsive layout.
 
-## Firestore security rules (needs update)
-Ideas subcollection needs these rules added for edit/delete/selection to work:
+## Firestore security rules (updated)
+Rules were updated to support idea editing/deleting, voting, and group chat:
+
+**Ideas subcollection:**
 ```
-allow update: if request.auth.uid == resource.data.authorId;
-allow delete: if request.auth.uid == resource.data.authorId;
+allow update: if isSessionParticipant(sessionId)
+  && (request.auth.uid == resource.data.authorId
+      || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votedBy']));
+allow delete: if isSessionParticipant(sessionId)
+  && request.auth.uid == resource.data.authorId;
 ```
-Without these, edit/delete buttons and idea selection flags fail silently. The participant submission flow was restructured to work regardless (participant update happens first, idea batch is non-critical).
+- Authors can edit/delete their own ideas (title, description, selected flag)
+- Any session participant can modify only the `votedBy` array (for casting/removing votes)
+
+**Group chat messages** (nested inside groups match):
+```
+match /messages/{messageId} {
+  allow read: if isSessionMember(sessionId);
+  allow create: if isSessionParticipant(sessionId)
+    && request.resource.data.authorId == request.auth.uid;
+  allow update, delete: if false;
+}
+```
+- Participants can read all chat messages and create messages attributed to themselves
+- No editing or deleting chat messages
 
 **Group formation logic:**
 - Groups are formed immediately at join time via tryFormGroup() in session.js: as soon as X participants (groupSize) are waiting, they are assigned to a group and move to the first phase together
@@ -89,7 +145,9 @@ Without these, edit/delete buttons and idea selection flags fail silently. The p
 - Solo stragglers who cannot fill a group wait in the lobby until more join, or instructor calls handleStragglers
 - Each participant is assigned an anonymous label (p1, p2, p3...) randomly at group creation; labels are shown instead of names throughout the session
 - autoGroupParticipants handles the individual->group transition within a group: when all members of a group finish individual phase, that group moves to group phase automatically
-- Session status auto-advances from individual->group when all groups are formed, and voting->survey when all votes are submitted
+- Session status auto-advances from individual->group when all groups are formed
+- Session status auto-advances from group->voting when ideation timer expires (via autoAdvanceOnTimer)
+- Session status auto-advances from voting->survey when voting timer expires (via autoAdvanceOnTimer)
 - Session status auto-advances from survey->done via onParticipantUpdated trigger when all participants have status 'done'
 **Key config objects per session:**
 ```
@@ -109,6 +167,11 @@ groups/{groupId}: {
   members: [uid, uid, ...],
   memberLabels: { uid: 'p1', uid: 'p2', ... },
   status, finalIdeas, createdAt
+}
+groups/{groupId}/messages/{messageId}: {
+  authorId: string,
+  text: string,
+  createdAt: serverTimestamp
 }
 participants/{uid}: {
   ...,
@@ -133,15 +196,19 @@ participants/{uid}: {
 - Code box hint text: "Share this code before your session begins. Participants join at: stouras.com/lab/ideasearchlab" (with clickable link)
 - joinHint class shows at the bottom of the Active Sessions panel
 - Setup Summary sits below the code box at the bottom of the left card
+- Phase Timers section labels: "Individual", "Group Ideation", "Group Voting" (renamed from "Group" and "Voting")
+- Summary shows phases as "Individual -> Group Ideation -> Group Voting" and timers as "Xmin individual, Xmin group ideation, Xmin group voting"
 - CSS module filenames must be Admin.module.css and AdminSession.module.css (dot not underscore) -- GitHub Pages build is case-sensitive
 **AdminSession.jsx + AdminSession.module.css (host control room):**
 - Header: back button, wordmark, slash, session code, status badge
 - Phase timeline rendered inside a timelineCard div (not raw text)
+- phaseLabel() helper displays human-friendly labels: "group ideation" for group status, "group voting" for voting status
 - Two-column grid: Participants panel (with breakdown chips and list) + Session Config panel
+- Config panel includes "Group ideation timer" and "Group voting timer" rows showing minutes or "Manual"
 - ConfigRow uses CSS module classes (configRow, configLabel, configValue) not inline styles
 - Advance bar at bottom: current phase, arrow, next phase, auto-note, Force advance button
+- Auto-advance notes context-aware: "Auto-advances when ideation timer expires" for group, "Auto-advances when voting timer expires" for voting
 - Participant display falls back to anonymousLabel or truncated ID if name is missing
-- Phase order value humanised (individual_first -> individual first)
 **Survey.jsx:**
 - On submit, writes status: 'done', surveyAnswers, surveyCompletedAt to participant doc directly (no Cloud Function)
 - onParticipantUpdated trigger in session.js detects all-done and advances session to 'done'
@@ -149,9 +216,10 @@ participants/{uid}: {
 - Sessions: read by any signed-in user, create by signed-in user, update by session instructor, delete by admin@admin.com only
 - Participants: read by instructor OR any session participant OR owner (needed for pre-join getDoc check)
 - Groups: read by session members, write only via Cloud Functions (admin SDK bypasses rules)
-- Ideas: read by session members, create by session participants (own ideas only), update/delete by author (NEEDS ADDING)
+- Group messages: read by session members, create by participants (own messages only), no edit/delete
+- Ideas: read by session members, create by session participants (own ideas only), update by author OR votedBy-only changes by any participant, delete by author
 **SPA routing:** 404.html at root of konstantinosStouras.github.io catches unknown paths and redirects to /lab/ideasearchlab/?redirect=... The inject step in deploy.yml injects a script into index.html that reads the redirect param and restores the URL.
-**Split-screen UI:** main app on left, AI chat on right, draggable divider. When AI is off the left panel fills full width.
+**Split-screen UI:** main app on left, AI chat on right, draggable divider. When AI is off the left panel fills full width. AI panel hidden during group voting sub-phase.
 **To deploy any frontend change:**
 ```
 cd C:\Users\User\Documents\GitHub\ideasearchlab
@@ -170,7 +238,10 @@ Note: Firebase detects unchanged functions and skips them. If a redeploy is skip
 - Firestore transactions (db.runTransaction) do NOT support query reads (tx.get with .where()). Only document reads (tx.get(docRef)) work inside transactions. Use batch writes instead when queries are needed.
 - Firestore read-after-write race condition: querying immediately after a .set() may not include the just-written document. Fix by passing the new document's ID explicitly and injecting it into the result if missing.
 - JoinSession and GroupPhase both had transaction bugs fixed by replacing transactions with query-then-batch pattern.
-- Every phase page (SessionLobby, IndividualPhase, GroupPhase, VotingPhase, Survey) has a real-time onSnapshot listener on the participant's own document that navigates automatically when status changes. This is the core routing mechanism.
+- Every phase page (SessionLobby, IndividualPhase, GroupPhase, Survey) has a real-time onSnapshot listener on the participant's own document that navigates automatically when status changes. This is the core routing mechanism.
+- GroupPhase handles both `group` and `voting` participant statuses internally (sub-phase detection). The `/voting` route in App.jsx also renders GroupPhase, so participants arriving at either URL get the correct view.
+- autoAdvanceOnTimer is idempotent: multiple clients calling it simultaneously when a timer expires is safe. The function checks session.status !== fromPhase and returns early if already advanced. Worst case: two concurrent calls both advance, setting the same values (harmless).
+- Voting uses `votedBy` array on idea docs instead of a separate `votes` counter. Vote count is computed as `votedBy.length` on the client. This avoids arrayUnion/increment sync issues.
 - Downloaded file changes must be manually copied into the local repo before committing -- Claude cannot push to GitHub directly.
 - CSS module filenames are case-sensitive on the GitHub Pages build server. Always use dots not underscores (Admin.module.css not Admin_module.css).
 - Browser cache can mask deployed changes. Use Ctrl+Shift+R or incognito to verify.
@@ -179,30 +250,26 @@ Note: Firebase detects unchanged functions and skips them. If a redeploy is skip
 - Atomic writeBatch operations fail entirely if any single write fails. For operations mixing critical updates (participant status) with non-critical ones (idea selection flags), separate them into independent calls so the critical path succeeds even if the non-critical batch fails due to missing Firestore rules.
 - GroupPhase individual ideas filter must fall back to "latest N by createdAt" when no ideas have `selected: true`, to handle the case where the selection batch failed due to Firestore rules.
 
-## Files changed in this session
-
-**New files created:**
-- `src/pages/Welcome.jsx` + `src/pages/Welcome.module.css` -- study overview with dynamic phase descriptions
-- `src/pages/Registration.jsx` + `src/pages/Registration.module.css` -- demographics form with country dropdowns and consent
+## Files changed in latest session (group chat + voting merge)
 
 **Updated files:**
-- `src/App.jsx` -- added Welcome and Registration routes
-- `src/pages/JoinSession.jsx` -- validates code client-side, navigates to Welcome for new participants
-- `src/pages/IndividualPhase.jsx` + `.module.css` -- instructions page, structured ideas (title+description), pill cards, edit/delete, double-click selection, collapsible task brief
-- `src/pages/GroupPhase.jsx` + `.module.css` -- matching pill cards, title+description submission, selection fallback, voting navigation fix
-- `src/pages/Survey.jsx` + `.module.css` -- redesigned with section cards, new question type renderers
-- `src/data/surveyQuestions.js` -- 12 questions across 4 sections with new types
+- `src/App.jsx` -- `/voting` route now renders GroupPhase instead of VotingPhase; VotingPhase import removed
+- `src/pages/GroupPhase.jsx` + `.module.css` -- dual ideation/voting mode, group chat, auto-advance on timer, double-click voting with votedBy array, vote badges, idea sorting
+- `src/pages/Admin.jsx` -- timer labels renamed to "Group Ideation" / "Group Voting", summary text updated
+- `src/pages/AdminSession.jsx` -- phaseLabel() helper, config shows ideation/voting timers, context-aware auto-advance notes
+- `functions/session.js` -- added autoAdvanceOnTimer Cloud Function
+- `functions/index.js` -- exports autoAdvanceOnTimer
+- Firestore security rules -- ideas update/delete rules added, group chat messages subcollection rules added
+
+**Retired files (still in repo, no longer imported):**
+- `src/pages/VotingPhase.jsx` + `VotingPhase.module.css` -- replaced by GroupPhase voting sub-phase
 
 **Static assets needed:**
 - `public/images/sleep-mask-example.png` -- example product image for task brief (gracefully hidden if missing)
 
-**Firestore rules needed (not yet applied):**
-- Ideas subcollection: `allow update/delete: if request.auth.uid == resource.data.authorId;`
-
-**Current status:** Welcome, Registration, IndividualPhase (with instructions + structured ideas), GroupPhase (with pill cards and fallback), and Survey (redesigned) are all deployed. Core flow works end to end. Firestore idea update/delete rules still need to be added for edit, delete, and selection persistence to work.
+**Current status:** Full flow deployed with group ideation/voting split, group chat, auto-advance on timer expiry, and updated Firestore rules. VotingPhase retired in favor of GroupPhase dual-mode.
 
 **Next steps when resuming:**
-1. Add Firestore security rules for idea update/delete
-2. Merge voting into group phase: moderator selection with group approval (design discussion started but not yet implemented)
-3. Test full end-to-end flow with Firestore rules in place
-4. Add sleep mask image to public/images/
+1. End-to-end test of the full participant flow (group size 1 for solo, short timers to test auto-advance)
+2. Add sleep mask image to public/images/
+3. Consider persisting top 3 voted ideas to group document's finalIdeas field after voting completes

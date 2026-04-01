@@ -28,36 +28,108 @@
   background: var(--paper-dark);
   color: var(--muted);
   border: 1px solid var(--border);
+  transition: background 0.15s, border-color 0.15s;
 }
 .memberChipMe {
   background: rgba(200,86,42,0.08);
   color: var(--accent);
   border-color: rgba(200,86,42,0.2);
 }
-
-.topRight { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-
-.waitingMsg {
-  font-size: 13px;
-  color: var(--muted);
-  padding: 8px 14px;
-  background: var(--paper);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+.memberChipVoted {
+  border-color: #4caf50;
+  color: #2e7d32;
+}
+.memberChipMe.memberChipVoted {
+  background: rgba(76,175,80,0.08);
+  border-color: #4caf50;
+  color: #2e7d32;
 }
 
-/* Vote counter in top bar */
+.topRight { display: flex; align-items: center; gap: 12px; }
+
+/* ─── Proceed / Submit button ───────────── */
+.proceedBtn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 20px;
+  background: var(--accent);
+  color: white;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.proceedBtn:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+.proceedBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.proceedBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Votes submitted badge ─────────────── */
+.votesLockedBadge {
+  font-size: 13px;
+  color: #2e7d32;
+  padding: 8px 18px;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ─── Vote counter ──────────────────────── */
 .voteCounter {
-  font-family: var(--font-display);
-  font-size: 26px;
   display: flex;
   align-items: baseline;
   gap: 2px;
 }
-.voteNum { color: var(--accent); font-weight: 700; }
-.voteDen { color: var(--muted); font-size: 18px; }
+.voteNum {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--accent);
+}
+.voteDen {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--muted);
+}
 
-/* Two column layout */
+/* ─── Voting hint ───────────────────────── */
+.votingHint {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 14px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+
+.backLink {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.backLink:hover { opacity: 0.75; }
+
+/* ═══════════════════════════════════════════
+   IDEATION MODE: two columns (individual | group+chat)
+   ═══════════════════════════════════════════ */
 .columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -65,6 +137,7 @@
   flex: 1;
   min-height: 0;
 }
+
 .column {
   display: flex;
   flex-direction: column;
@@ -72,14 +145,11 @@
   overflow-y: auto;
   min-height: 0;
 }
-.columnTitle { font-family: var(--font-display); font-size: 18px; }
-.columnSub { font-size: 12px; color: var(--muted); margin-top: -6px; }
 
-/* Right column split: ideas top, chat bottom */
-.rightColumn {
+.columnRight {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   min-height: 0;
   overflow: hidden;
 }
@@ -88,13 +158,47 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  flex: 0 1 auto;
-  overflow-y: auto;
-  min-height: 120px;
+  flex-shrink: 0;
   max-height: 45%;
+  overflow-y: auto;
 }
 
-.ideaList { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.columnTitle { font-family: var(--font-display); font-size: 18px; }
+.columnSub { font-size: 12px; color: var(--muted); margin-top: -6px; }
+
+/* ═══════════════════════════════════════════
+   VOTING MODE: two columns (all ideas | chat)
+   ═══════════════════════════════════════════ */
+.votingColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.votingIdeasColumn {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.votingChatColumn {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ═══════════════════════════════════════════
+   Shared
+   ═══════════════════════════════════════════ */
+.ideaList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
 
 /* ═══════════════════════════════════════════
    Idea pill cards
@@ -105,42 +209,60 @@
   border-radius: 20px;
   padding: 14px 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: box-shadow 0.15s, border-color 0.2s, transform 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
   animation: fadeIn 0.2s ease;
+  position: relative;
+  user-select: none;
 }
 .ideaPill:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
+
+.ideaPillClickable { cursor: pointer; }
 
 .ideaPillGroup {
   border-color: rgba(200,86,42,0.2);
   background: rgba(200,86,42,0.015);
 }
 
-/* Voting mode states */
-.ideaPillVotable {
-  cursor: pointer;
-  user-select: none;
-}
-.ideaPillVotable:hover {
-  border-color: rgba(200,86,42,0.35);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 10px rgba(0,0,0,0.07);
-}
-
+/* Voted state */
 .ideaPillVoted {
-  border-color: var(--accent) !important;
+  border-color: var(--accent);
   background: rgba(200,86,42,0.04);
-  box-shadow: 0 0 0 2px rgba(200,86,42,0.12), 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 0 0 2px rgba(200,86,42,0.1);
+}
+.ideaPillVoted:hover {
+  box-shadow: 0 0 0 2px rgba(200,86,42,0.15), 0 2px 8px rgba(0,0,0,0.06);
 }
 
-.ideaPillDisabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+/* Maxed out */
+.ideaPillMaxed {
+  cursor: default;
+  opacity: 0.65;
 }
-.ideaPillDisabled:hover {
-  transform: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+
+/* ─── Vote badge (inside pill, top-right) ── */
+.voteBadge {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.voteBadgeMine {
+  color: var(--accent);
+}
+
+/* ─── Phase tag (shown in voting mode) ──── */
+.phaseTag {
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--paper-dark);
+  padding: 1px 7px;
+  border-radius: 8px;
+  text-transform: lowercase;
 }
 
 @keyframes fadeIn {
@@ -148,18 +270,9 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Meta row (author label + vote badge) */
-.pillTop {
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.pillMeta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* Meta row */
+.pillTop { margin-bottom: 6px; }
+.pillMeta { display: flex; align-items: center; gap: 6px; }
 .pillAuthor {
   font-size: 11px;
   font-weight: 600;
@@ -175,18 +288,6 @@
   border-radius: 10px;
 }
 
-/* Vote badge */
-.voteBadge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
-  background: rgba(200,86,42,0.1);
-  padding: 2px 8px;
-  border-radius: 10px;
-  letter-spacing: 0.02em;
-}
-
-/* Title */
 .pillTitle {
   font-size: 14px;
   font-weight: 700;
@@ -194,35 +295,26 @@
   line-height: 1.4;
 }
 
-/* Separator line */
 .pillDivider {
   height: 1px;
   margin: 8px 0;
   background: linear-gradient(
-    90deg,
-    var(--border) 0%,
-    rgba(200,86,42,0.12) 50%,
-    var(--border) 100%
+    90deg, var(--border) 0%, rgba(200,86,42,0.12) 50%, var(--border) 100%
   );
 }
-
 .ideaPillGroup .pillDivider {
   background: linear-gradient(
-    90deg,
-    rgba(200,86,42,0.08) 0%,
-    rgba(200,86,42,0.2) 50%,
-    rgba(200,86,42,0.08) 100%
+    90deg, rgba(200,86,42,0.08) 0%, rgba(200,86,42,0.2) 50%, rgba(200,86,42,0.08) 100%
   );
 }
 
-/* Description */
 .pillDesc {
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--muted);
 }
 
-/* ─── Add idea form (pill style) ─────────── */
+/* ─── Add idea form ──────────────────────── */
 .addPill {
   background: var(--white);
   border: 1.5px dashed var(--border);
@@ -238,70 +330,52 @@
 }
 
 .addTitleInput {
-  border: none;
-  outline: none;
+  border: none; outline: none;
   font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-  padding: 0;
+  font-size: 14px; font-weight: 600;
+  color: var(--ink); padding: 0;
   background: transparent;
 }
 .addTitleInput::placeholder { color: var(--muted); font-weight: 400; }
 
-.addDivider {
-  height: 1px;
-  margin: 10px 0;
-  background: var(--border);
-}
+.addDivider { height: 1px; margin: 10px 0; background: var(--border); }
 
 .addDescInput {
-  border: none;
-  outline: none;
+  border: none; outline: none;
   font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--ink);
-  padding: 0;
-  background: transparent;
-  resize: none;
-  line-height: 1.5;
+  font-size: 13px; color: var(--ink);
+  padding: 0; background: transparent;
+  resize: none; line-height: 1.5;
 }
 .addDescInput::placeholder { color: var(--muted); }
 
-.addFooter {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-
-.addBtn {
-  padding: 7px 18px;
-  font-size: 13px;
-  border-radius: 14px;
-}
+.addFooter { display: flex; justify-content: flex-end; margin-top: 12px; }
+.addBtn { padding: 7px 18px; font-size: 13px; border-radius: 14px; }
 
 /* ═══════════════════════════════════════════
    Group Chat
    ═══════════════════════════════════════════ */
 .chatSection {
-  flex: 1 1 0;
-  min-height: 200px;
+  flex: 1;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
   background: var(--white);
-  border: 1.5px solid var(--border);
-  border-radius: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
 .chatHeader {
-  padding: 14px 20px 10px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  background: var(--paper);
 }
-.chatTitle {
+.chatHeading {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
   margin: 0;
 }
 .chatSub {
@@ -310,7 +384,6 @@
   margin: 2px 0 0;
 }
 
-/* Message area */
 .chatMessages {
   flex: 1;
   overflow-y: auto;
@@ -318,136 +391,114 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background: var(--paper);
 }
 
 .chatEmpty {
   text-align: center;
+  font-size: 13px;
   color: var(--muted);
-  font-size: 12px;
-  padding: 32px 0;
   font-style: italic;
+  padding: 24px 0;
+  margin: 0;
 }
 
-/* Bubble rows */
-.chatBubbleRow {
-  display: flex;
-  justify-content: flex-start;
-}
-.chatBubbleRowMe {
-  justify-content: flex-end;
-}
-
-/* Bubbles */
 .chatBubble {
-  max-width: 78%;
-  padding: 8px 12px 6px;
+  max-width: 80%;
+  padding: 7px 12px 4px;
   border-radius: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 4px 8px;
+  position: relative;
   animation: fadeIn 0.15s ease;
 }
 
+.chatBubbleMe {
+  align-self: flex-end;
+  background: rgba(200,86,42,0.1);
+  border-bottom-right-radius: 4px;
+}
+
 .chatBubbleOther {
-  background: var(--paper);
+  align-self: flex-start;
+  background: var(--white);
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
 }
 
-.chatBubbleMe {
-  background: rgba(200,86,42,0.08);
-  border: 1px solid rgba(200,86,42,0.15);
-  border-bottom-right-radius: 4px;
-}
-
-.chatAuthor {
+.chatBubbleAuthor {
   display: block;
-  width: 100%;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--accent);
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 }
 
-.chatText {
+.chatBubbleText {
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink);
-  white-space: pre-wrap;
-  word-break: break-word;
+  margin: 0 0 2px;
+  word-wrap: break-word;
 }
 
-.chatTime {
-  font-size: 9.5px;
+.chatBubbleTime {
+  display: block;
+  text-align: right;
+  font-size: 10px;
   color: var(--muted);
-  margin-left: auto;
-  flex-shrink: 0;
   line-height: 1;
-  align-self: flex-end;
+  margin-top: 1px;
 }
 
-/* Input row */
-.chatInputRow {
+.chatInputBar {
   display: flex;
-  align-items: flex-end;
   gap: 8px;
-  padding: 10px 14px 12px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border);
-  flex-shrink: 0;
+  background: var(--white);
 }
 
 .chatInput {
   flex: 1;
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
   padding: 8px 14px;
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--ink);
   background: var(--paper);
-  resize: none;
   outline: none;
-  line-height: 1.45;
-  max-height: 80px;
-  overflow-y: auto;
   transition: border-color 0.15s;
 }
-.chatInput:focus {
-  border-color: var(--accent);
-  background: var(--white);
-}
-.chatInput::placeholder {
-  color: var(--muted);
-}
+.chatInput::placeholder { color: var(--muted); }
+.chatInput:focus { border-color: var(--accent); }
 
 .chatSendBtn {
   padding: 8px 16px;
+  border: none;
+  border-radius: 20px;
+  background: var(--accent);
+  color: white;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
-  font-family: var(--font-body);
-  color: var(--white);
-  background: var(--accent);
-  border: none;
-  border-radius: 14px;
   cursor: pointer;
-  flex-shrink: 0;
   transition: opacity 0.15s;
+  flex-shrink: 0;
 }
-.chatSendBtn:hover:not(:disabled) {
-  opacity: 0.85;
-}
-.chatSendBtn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
+.chatSendBtn:hover:not(:disabled) { opacity: 0.85; }
+.chatSendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ═══════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════ */
 @media (max-width: 700px) {
   .columns { grid-template-columns: 1fr; }
+  .votingColumns { grid-template-columns: 1fr; }
   .ideaPill { border-radius: 16px; padding: 12px 16px; }
   .addPill { border-radius: 16px; padding: 12px 16px; }
-  .chatSection { border-radius: 16px; }
   .groupIdeasSection { max-height: none; }
+  .chatSection { min-height: 240px; }
+  .topRight { flex-wrap: wrap; }
 }

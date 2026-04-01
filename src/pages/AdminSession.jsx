@@ -52,17 +52,34 @@ export default function AdminSession() {
     return acc
   }, {})
 
+  // Determine auto-advance note based on current phase
+  function getAutoNote() {
+    const status = session.status
+    if (status === 'waiting') return 'Auto-advances when a group forms'
+    if (status === 'individual') return 'Auto-advances when all groups complete'
+    if (status === 'group') return session.phaseConfig?.groupPhaseDuration ? 'Auto-advances when ideation timer expires' : 'Auto-advances when participants complete'
+    if (status === 'voting') return session.phaseConfig?.votingDuration ? 'Auto-advances when voting timer expires' : null
+    return null
+  }
+
+  // Human-friendly phase label
+  function phaseLabel(phase) {
+    if (phase === 'group') return 'group ideation'
+    if (phase === 'voting') return 'group voting'
+    return phase
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerLeft}>
-          <button className={styles.backBtn} onClick={() => navigate('/admin')}>← Back</button>
+          <button className={styles.backBtn} onClick={() => navigate('/admin')}>\u2190 Back</button>
           <span className={styles.wordmark}>Ideation Challenge</span>
           <span className={styles.slash}>/</span>
           <span className={styles.sessionCode}>{session.code}</span>
         </div>
         <span className={`${styles.statusBadge} ${styles['status_' + session.status]}`}>
-          {session.status}
+          {phaseLabel(session.status)}
         </span>
       </header>
 
@@ -81,7 +98,7 @@ export default function AdminSession() {
                 ].join(' ')}
               >
                 <div className={styles.timelineDot} />
-                <span className={styles.timelineLabel}>{phase}</span>
+                <span className={styles.timelineLabel}>{phaseLabel(phase)}</span>
               </div>
             ))}
           </div>
@@ -125,6 +142,8 @@ export default function AdminSession() {
               <ConfigRow label="Group size" value={session.phaseConfig?.groupSize ?? 'N/A'} />
               <ConfigRow label="Max ideas (individual)" value={session.phaseConfig?.maxIdeasIndividual ?? 'N/A'} />
               <ConfigRow label="Ideas carried to group" value={session.phaseConfig?.ideasCarriedToGroup ?? 'N/A'} />
+              <ConfigRow label="Group ideation timer" value={session.phaseConfig?.groupPhaseDuration ? `${Math.round(session.phaseConfig.groupPhaseDuration / 60)} min` : 'Manual'} />
+              <ConfigRow label="Group voting timer" value={session.phaseConfig?.votingDuration ? `${Math.round(session.phaseConfig.votingDuration / 60)} min` : 'Manual'} />
               <ConfigRow label="AI (individual)" value={session.aiConfig?.individualAI ? 'On' : 'Off'} />
               <ConfigRow label="AI (group)" value={session.aiConfig?.groupAI ? 'On' : 'Off'} />
             </div>
@@ -136,24 +155,24 @@ export default function AdminSession() {
           <div className={styles.advanceBar}>
             <div className={styles.advanceInfo}>
               <span className={styles.advanceLabel}>Current phase:</span>
-              <strong>{session.status}</strong>
+              <strong>{phaseLabel(session.status)}</strong>
               {nextPhase && (
                 <>
-                  <span className={styles.advanceArrow}>→</span>
-                  <span className={styles.advanceNext}>{nextPhase}</span>
+                  <span className={styles.advanceArrow}>\u2192</span>
+                  <span className={styles.advanceNext}>{phaseLabel(nextPhase)}</span>
                 </>
               )}
             </div>
             <div className={styles.advanceRight}>
-              {['waiting', 'individual', 'group'].includes(session.status) && (
-                <span className={styles.autoNote}>Auto-advances when participants complete</span>
+              {getAutoNote() && (
+                <span className={styles.autoNote}>{getAutoNote()}</span>
               )}
               <button
                 className="btn-primary"
                 onClick={advancePhase}
                 disabled={advancing || isLast}
               >
-                {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Force advance → ${nextPhase}`}
+                {advancing ? 'Advancing...' : isLast ? 'Session Complete' : `Force advance \u2192 ${phaseLabel(nextPhase)}`}
               </button>
             </div>
           </div>

@@ -101,14 +101,14 @@ exports.joinSession = functions.https.onCall(async (data, context) => {
   const existingSnap = await participantRef.get()
 
   if (existingSnap.exists) {
-    // Participant already registered — only update name/email, never touch
+    // Participant already registered -- only update name/email, never touch
     // status, individualComplete, or groupId (those track session progress)
     await participantRef.update({
       name: context.auth.token.name || context.auth.token.email,
       email: context.auth.token.email,
     })
   } else {
-    // First join — create the participant document with initial state
+    // First join -- create the participant document with initial state
     await participantRef.set({
       name: context.auth.token.name || context.auth.token.email,
       email: context.auth.token.email,
@@ -181,7 +181,6 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
         if (p.status === 'waiting') newStatus = 'group'
       } else {
         // individual_first: force-advance anyone who hasn't reached group yet
-        // This covers: still waiting, still in individual, or stuck in transition
         if (['waiting', 'individual'].includes(p.status)) newStatus = 'group'
       }
     }
@@ -211,6 +210,81 @@ exports.advancePhase = functions.https.onCall(async (data, context) => {
     await preAssignGroups(sessionId, participantsSnap.docs.map(d => ({ id: d.id, ...d.data() })), session.phaseConfig)
   }
 
+  return { nextPhase }
+})
+
+
+/**
+ * autoAdvanceOnTimer
+ *
+ * Called by any participant when their phase timer expires.
+ * Validates server-side that the timer has actually expired,
+ * then advances the session to the next phase.
+ * Idempotent: if the session has already advanced, returns early.
+ */
+exports.autoAdvanceOnTimer = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.')
+
+  const { sessionId, fromPhase } = data
+  if (!sessionId || !fromPhase) {
+    throw new functions.https.HttpsError('invalid-argument', 'sessionId and fromPhase required.')
+  }
+
+  const sessionRef = db.collection('sessions').doc(sessionId)
+  const sessionSnap = await sessionRef.get()
+  if (!sessionSnap.exists) throw new functions.https.HttpsError('not-found', 'Session not found.')
+
+  const session = sessionSnap.data()
+
+  // Already advanced past this phase, nothing to do
+  if (session.status !== fromPhase) {
+    return { alreadyAdvanced: true }
+  }
+
+  // Server-side timer validation: check that the timer has actually expired
+  const startMs = session.phaseStartedAt?.toMillis
+    ? session.phaseStartedAt.toMillis()
+    : (session.phaseStartedAt?.seconds || 0) * 1000
+
+  let duration = null
+  if (fromPhase === 'individual') duration = session.phaseConfig?.individualPhaseDuration
+  else if (fromPhase === 'group') duration = session.phaseConfig?.groupPhaseDuration
+  else if (fromPhase === 'voting') duration = session.phaseConfig?.votingDuration
+
+  if (duration && startMs) {
+    const endMs = startMs + duration * 1000
+    // Allow 5 seconds of tolerance for clock skew
+    if (Date.now() < endMs - 5000) {
+      throw new functions.https.HttpsError('failed-precondition', 'Timer has not expired yet.')
+    }
+  }
+
+  // Determine next phase from the sequence
+  const sequence = getPhaseSequence(session.phaseConfig)
+  const currentIndex = sequence.indexOf(fromPhase)
+  if (currentIndex === -1 || currentIndex >= sequence.length - 1) {
+    return { alreadyAdvanced: true }
+  }
+  const nextPhase = sequence[currentIndex + 1]
+
+  // Build the batch: update session + all affected participants
+  const batch = db.batch()
+
+  batch.update(sessionRef, {
+    status: nextPhase,
+    phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+
+  const participantsSnap = await sessionRef.collection('participants').get()
+  participantsSnap.docs.forEach(pDoc => {
+    const p = pDoc.data()
+    // Move participants who are still in the fromPhase
+    if (p.status === fromPhase) {
+      batch.update(pDoc.ref, { status: nextPhase })
+    }
+  })
+
+  await batch.commit()
   return { nextPhase }
 })
 

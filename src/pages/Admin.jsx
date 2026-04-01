@@ -91,7 +91,6 @@ export default function Admin() {
         ...config,
       })
       setLastCreatedCode(code)
-      // Do NOT navigate away — show the code prominently instead
     } catch (err) {
       console.error(err)
     } finally {
@@ -139,12 +138,12 @@ export default function Admin() {
 
   const phases = []
   if (pc.individualPhaseActive) phases.push('Individual')
-  if (pc.groupPhaseActive) phases.push('Group')
-  const phaseStr = pc.phaseOrder === 'group_first' ? [...phases].reverse().join(' → ') : phases.join(' → ')
+  if (pc.groupPhaseActive) phases.push('Group Ideation', 'Group Voting')
+  const phaseStr = pc.phaseOrder === 'group_first' ? [...phases].reverse().join(' \u2192 ') : phases.join(' \u2192 ')
   const timers = [
     pc.individualPhaseActive && pc.individualPhaseDuration && `${Math.round(pc.individualPhaseDuration / 60)}min individual`,
-    pc.groupPhaseActive && pc.groupPhaseDuration && `${Math.round(pc.groupPhaseDuration / 60)}min group`,
-    pc.groupPhaseActive && pc.votingDuration && `${Math.round(pc.votingDuration / 60)}min voting`,
+    pc.groupPhaseActive && pc.groupPhaseDuration && `${Math.round(pc.groupPhaseDuration / 60)}min group ideation`,
+    pc.groupPhaseActive && pc.votingDuration && `${Math.round(pc.votingDuration / 60)}min group voting`,
   ].filter(Boolean)
 
   return (
@@ -154,7 +153,7 @@ export default function Admin() {
         <div className={styles.headerRight}>
           <span className={styles.role}>Instructor</span>
           <button className={styles.themeBtn} onClick={toggle} title="Toggle dark mode">
-            {dark ? '☀' : '☾'}
+            {dark ? '\u2600' : '\u263E'}
           </button>
           <button className="btn-ghost" onClick={() => navigate('/admin/ai-settings')}>AI Settings</button>
           <button className="btn-ghost" onClick={() => signOut(auth)}>Sign out</button>
@@ -166,7 +165,7 @@ export default function Admin() {
           <div className={styles.leftCol}>
             <div className="card">
               <h2 className={styles.cardTitle}>
-                {editingSession ? `Edit Session — ${editingSession.code}` : 'Create New Session'}
+                {editingSession ? `Edit Session \u2014 ${editingSession.code}` : 'Create New Session'}
                 {editingSession && <span className={styles.editBadge}>editing</span>}
               </h2>
               <p className={styles.cardSubtitle}>
@@ -212,8 +211,8 @@ export default function Admin() {
                 <p className={styles.sectionHint}>Set a countdown for each phase, or leave blank to advance manually from the host control room.</p>
                 <div className={styles.grid3}>
                   <NumberField label="Individual" value={pc.individualPhaseDuration} min={60} onChange={v => setPhase('individualPhaseDuration', v)} disabled={!pc.individualPhaseActive} nullable />
-                  <NumberField label="Group" value={pc.groupPhaseDuration} min={60} onChange={v => setPhase('groupPhaseDuration', v)} disabled={!pc.groupPhaseActive} nullable />
-                  <NumberField label="Voting" value={pc.votingDuration} min={30} onChange={v => setPhase('votingDuration', v)} disabled={!pc.groupPhaseActive} nullable />
+                  <NumberField label="Group Ideation" value={pc.groupPhaseDuration} min={60} onChange={v => setPhase('groupPhaseDuration', v)} disabled={!pc.groupPhaseActive} nullable />
+                  <NumberField label="Group Voting" value={pc.votingDuration} min={30} onChange={v => setPhase('votingDuration', v)} disabled={!pc.groupPhaseActive} nullable />
                 </div>
               </div>
 

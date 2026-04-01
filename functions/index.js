@@ -11,6 +11,7 @@ const voting = require('./voting')
 
 exports.joinSession = session.joinSession
 exports.advancePhase = session.advancePhase
+exports.autoAdvanceOnTimer = session.autoAdvanceOnTimer
 exports.autoGroupParticipants = grouping.autoGroupParticipants
 exports.handleStragglers = grouping.handleStragglers
 exports.sendAIMessage = ai.sendAIMessage

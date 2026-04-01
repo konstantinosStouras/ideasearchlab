@@ -10,7 +10,6 @@ import Registration from './pages/Registration'
 import SessionLobby from './pages/SessionLobby'
 import IndividualPhase from './pages/IndividualPhase'
 import GroupPhase from './pages/GroupPhase'
-import VotingPhase from './pages/VotingPhase'
 import Survey, { Done } from './pages/Survey'
 import Admin from './pages/Admin'
 import AISettings from './pages/AISettings'
@@ -72,10 +71,11 @@ export default function App() {
           </RequireAuth>
         } />
 
+        {/* Voting now rendered by GroupPhase (same component, voting sub-phase) */}
         <Route path="/session/:sessionId/voting" element={
           <RequireAuth>
             <SessionWrapper>
-              <VotingPhase />
+              <GroupPhase />
             </SessionWrapper>
           </RequireAuth>
         } />

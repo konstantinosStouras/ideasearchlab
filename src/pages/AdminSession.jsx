@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { doc, collection, onSnapshot, getDocs } from 'firebase/firestore'
+import { doc, collection, onSnapshot, getDocs, orderBy, query } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functions } from '../firebase'
 import { getPhaseSequence } from '../utils/phaseSequence'
@@ -47,16 +47,21 @@ export default function AdminSession() {
     if (exporting) return
     setExporting(true)
     try {
-      // Fetch all data collections
-      const [ideasSnap, groupsSnap] = await Promise.all([
+      // Fetch all data collections in parallel
+      const [ideasSnap, groupsSnap, aiMessagesSnap] = await Promise.all([
         getDocs(collection(db, 'sessions', sessionId, 'ideas')),
         getDocs(collection(db, 'sessions', sessionId, 'groups')),
+        getDocs(query(
+          collection(db, 'sessions', sessionId, 'aiMessages'),
+          orderBy('timestamp', 'asc')
+        )),
       ])
 
       const ideas = ideasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
       const groups = groupsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const aiMessages = aiMessagesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-      // Fetch chat messages from each group
+      // Fetch group chat messages from each group
       const chatMessages = []
       for (const group of groups) {
         const msgSnap = await getDocs(
@@ -64,11 +69,7 @@ export default function AdminSession() {
         )
         msgSnap.docs.forEach(d => {
           const msg = d.data()
-          chatMessages.push({
-            groupId: group.id,
-            messageId: d.id,
-            ...msg,
-          })
+          chatMessages.push({ groupId: group.id, messageId: d.id, ...msg })
         })
       }
 
@@ -126,7 +127,6 @@ export default function AdminSession() {
       // ── Sheet 3: Survey Answers ──
       const surveyParticipants = participants.filter(p => p.surveyAnswers)
       if (surveyParticipants.length > 0) {
-        // Collect all question keys across all participants
         const allKeys = new Set()
         surveyParticipants.forEach(p => {
           Object.keys(p.surveyAnswers).forEach(k => allKeys.add(k))
@@ -142,7 +142,6 @@ export default function AdminSession() {
           }
           sortedKeys.forEach(key => {
             const val = p.surveyAnswers[key]
-            // Handle nested objects (rating_group answers)
             if (val && typeof val === 'object' && !Array.isArray(val)) {
               row[key] = Object.entries(val).map(([k, v]) => `${k}: ${v}`).join('; ')
             } else {
@@ -156,7 +155,7 @@ export default function AdminSession() {
         XLSX.utils.book_append_sheet(wb, wsSurvey, 'Survey')
       }
 
-      // ── Sheet 4: Chat Messages ──
+      // ── Sheet 4: Group Chat Messages ──
       if (chatMessages.length > 0) {
         const chatRows = chatMessages
           .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0))
@@ -169,10 +168,26 @@ export default function AdminSession() {
           }))
         const wsChat = XLSX.utils.json_to_sheet(chatRows)
         autoWidth(wsChat, chatRows)
-        XLSX.utils.book_append_sheet(wb, wsChat, 'Chat Messages')
+        XLSX.utils.book_append_sheet(wb, wsChat, 'Group Chat')
       }
 
-      // ── Sheet 5: Groups ──
+      // ── Sheet 5: AI Chat ──
+      if (aiMessages.length > 0) {
+        const aiRows = aiMessages.map(msg => ({
+          'Role': msg.role || '',
+          'Scope': msg.scope || '',
+          'Scope ID': msg.scopeId || '',
+          'Author ID': msg.authorId || '',
+          'Author Name': msg.authorName || '',
+          'Message': msg.text || '',
+          'Timestamp': formatTimestamp(msg.timestamp),
+        }))
+        const wsAI = XLSX.utils.json_to_sheet(aiRows)
+        autoWidth(wsAI, aiRows)
+        XLSX.utils.book_append_sheet(wb, wsAI, 'AI Chat')
+      }
+
+      // ── Sheet 6: Groups ──
       if (groups.length > 0) {
         const groupRows = groups.map(g => ({
           'Group ID': g.id,
@@ -217,7 +232,6 @@ export default function AdminSession() {
     return count
   }
 
-  /** Auto-fit column widths based on content */
   function autoWidth(ws, rows) {
     if (!rows.length) return
     const keys = Object.keys(rows[0])
@@ -256,7 +270,6 @@ export default function AdminSession() {
     return phase
   }
 
-  // Data summary counts
   const surveyCount = participants.filter(p => p.surveyAnswers).length
   const votedCount = participants.filter(p => p.votesSubmitted || (p.votedFor && p.votedFor.length > 0)).length
 
@@ -347,7 +360,7 @@ export default function AdminSession() {
               <h2 className={styles.cardTitle}>Data &amp; Export</h2>
               <p className={styles.exportSub}>
                 Download all session data as an Excel file with separate sheets for
-                participants, ideas, survey responses, chat messages, and groups.
+                participants, ideas, survey responses, group chat, AI chat, and groups.
               </p>
             </div>
             <button
